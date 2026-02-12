@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint User Sessions Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e64919",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#211511",
+                        "sand-bg": "#F9F7F2", // Specific requested sand color
+                        "charcoal": "#2c2c2c",
+                        "charcoal-light": "#4a4a4a",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "serif": ["Newsreader", "serif"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<!-- Google Fonts for Newsreader (Serif) and Inter (Sans) -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        /* Custom scrollbar to keep it clean */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d1d5db; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af; 
+        }
+        .editorial-shadow {
+            box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 1px 4px -2px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="bg-sand-bg text-charcoal font-display min-h-screen flex flex-col antialiased">
+<!-- Navbar -->
+<nav class="w-full px-6 py-5 flex items-center justify-between sticky top-0 z-50 bg-sand-bg/90 backdrop-blur-sm">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full border border-charcoal flex items-center justify-center bg-transparent">
+<span class="font-serif font-bold text-lg leading-none">B</span>
+</div>
+<span class="font-serif text-xl text-charcoal tracking-tight font-medium">Blueprint</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="bg-primary hover:bg-primary/90 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-sm flex items-center gap-2">
+<span class="material-icons text-base">add</span>
+                New Session
+            </button>
+<button class="w-9 h-9 rounded-full bg-charcoal text-white flex items-center justify-center text-sm font-medium hover:bg-charcoal/90 transition-colors">
+                JD
+            </button>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow w-full max-w-[900px] mx-auto px-6 py-12">
+<!-- Heading -->
+<header class="mb-8">
+<h1 class="font-serif text-[28px] italic text-charcoal font-medium">Your Sessions</h1>
+</header>
+<!-- Session List -->
+<div class="flex flex-col gap-4">
+<!-- Card 1 -->
+<div class="group bg-white rounded-2xl border border-gray-200 p-5 flex items-center justify-between transition-all hover:border-primary/30 hover:shadow-md editorial-shadow cursor-pointer">
+<div class="flex flex-col gap-1">
+<h2 class="font-display font-semibold text-base text-charcoal group-hover:text-primary transition-colors">Personal Finance App Research</h2>
+<div class="flex items-center text-[13px] text-gray-500 font-display">
+<span class="material-icons text-[14px] mr-1.5 text-gray-400">schedule</span>
+<span>Started 2 days ago</span>
+<span class="mx-2 text-gray-300">•</span>
+<span>3 items in Blueprint</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium text-charcoal hover:border-primary hover:text-primary bg-transparent transition-colors opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 duration-200">
+                        Resume
+                    </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-charcoal transition-colors">
+<span class="material-icons text-xl">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group bg-white rounded-2xl border border-gray-200 p-5 flex items-center justify-between transition-all hover:border-primary/30 hover:shadow-md editorial-shadow cursor-pointer">
+<div class="flex flex-col gap-1">
+<h2 class="font-display font-semibold text-base text-charcoal group-hover:text-primary transition-colors">Food Delivery Market — India</h2>
+<div class="flex items-center text-[13px] text-gray-500 font-display">
+<span class="material-icons text-[14px] mr-1.5 text-gray-400">schedule</span>
+<span>Started 5 days ago</span>
+<span class="mx-2 text-gray-300">•</span>
+<span>7 items in Blueprint</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium text-charcoal hover:border-primary hover:text-primary bg-transparent transition-colors opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 duration-200">
+                        Resume
+                    </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-charcoal transition-colors">
+<span class="material-icons text-xl">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="group bg-white rounded-2xl border border-gray-200 p-5 flex items-center justify-between transition-all hover:border-primary/30 hover:shadow-md editorial-shadow cursor-pointer">
+<div class="flex flex-col gap-1">
+<h2 class="font-display font-semibold text-base text-charcoal group-hover:text-primary transition-colors italic text-gray-400 group-hover:text-primary/70">Untitled Session</h2>
+<div class="flex items-center text-[13px] text-gray-500 font-display">
+<span class="material-icons text-[14px] mr-1.5 text-gray-400">schedule</span>
+<span>Started 1 week ago</span>
+<span class="mx-2 text-gray-300">•</span>
+<span>0 items in Blueprint</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium text-charcoal hover:border-primary hover:text-primary bg-transparent transition-colors opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 duration-200">
+                        Resume
+                    </button>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-charcoal transition-colors">
+<span class="material-icons text-xl">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Empty State / Add New Placeholder (Optional but good for completeness) -->
+<div class="group border border-dashed border-gray-300 rounded-2xl p-5 flex items-center justify-center transition-all hover:border-primary/50 hover:bg-primary/5 cursor-pointer mt-2 h-20">
+<span class="text-sm font-medium text-gray-400 group-hover:text-primary flex items-center gap-2">
+<span class="material-icons text-sm">add_circle_outline</span>
+                    Start a new research session
+                </span>
+</div>
+</div>
+</main>
+<!-- Footer decoration (subtle gradient to ground the page) -->
+<div class="fixed bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-sand-bg via-sand-bg/80 to-transparent pointer-events-none z-10"></div>
+<!-- Background Texture/Image (Abstract) -->
+<!-- Placing a very subtle, almost invisible background image to give texture to the 'sand' feel without overwhelming the minimalist design -->
+<div class="fixed inset-0 pointer-events-none z-[-1] opacity-30 mix-blend-multiply" data-alt="Abstract subtle paper texture background pattern" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDYChgJ3GtCOdwAg_Ca0tTBKL-g8DunJf034Hcvu7uhp6K9Ee6ds6k2PXAT_Hsb8qbk_jR6R9q-nT1ScfNYveFOMzhOZag1UJv9zmCma4tJG1LoDxd6u4-2nBfsLyP7xrjF7vOR-xbDdYZI6M2FsUfvSP2f7lBsFt4YaavtSeQEBfeBWn62XDvkqyNPoB0MUYSaSFCmUXKeI8lRf6pc0tGd7rqIoIu9br6tJ-8iKwn3R7yjhXlsoPT_1HuuNbB8TSmuV3LgEJMafxHY'); background-size: cover; filter: grayscale(100%) contrast(120%);">
+</div>
+</body></html>

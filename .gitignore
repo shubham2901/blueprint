@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Build
+.next/
+__pycache__/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# IDE (keep .cursor/ tracked for worktrees.json and rules)
+.vscode/

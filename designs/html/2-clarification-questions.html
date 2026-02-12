@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint Research Tool</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600;700&amp;family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1F1F1F", // Charcoal brown for primary text/buttons
+                        "accent": "#A65D47", // Terracotta accent
+                        "primary-light": "#feece3",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#211611",
+                        "sand": "#F9F7F2",
+                        "sand-dark": "#2a221d",
+                        "charcoal": "#1F1F1F",
+                        "terracotta-soft": "#fdf1ec",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"],
+                        "serif": ["Newsreader", "serif"],
+                        "inter": ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "1.5rem", "xl": "2rem", "2xl": "2.5rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display h-screen flex flex-col overflow-hidden text-charcoal dark:text-gray-100 p-4 gap-4">
+<main class="flex-1 flex gap-4 h-full max-w-[1600px] mx-auto w-full">
+<section class="flex-[7] bg-white dark:bg-[#2d2420] rounded-xl shadow-sm flex flex-col relative overflow-hidden">
+<header class="px-8 pt-6 border-b border-gray-100 dark:border-gray-700/50">
+<nav class="flex space-x-8">
+<button class="pb-4 text-charcoal font-semibold border-b-2 border-charcoal transition-colors font-inter">
+                    Research
+                </button>
+<button class="pb-4 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 font-medium transition-colors font-inter">
+                    Blueprint
+                </button>
+</nav>
+</header>
+<div class="flex-1 flex flex-col items-center justify-center p-12 text-center">
+<div class="w-16 h-16 rounded-full bg-sand dark:bg-gray-800 mb-6 flex items-center justify-center text-accent/40">
+<span class="material-icons-outlined text-3xl">library_books</span>
+</div>
+<h2 class="font-serif text-3xl md:text-4xl text-gray-400 dark:text-gray-500 font-light italic">
+                Your research will appear here.
+            </h2>
+</div>
+<div class="absolute inset-0 pointer-events-none opacity-[0.03]" style="background-image: radial-gradient(#1F1F1F 1px, transparent 1px); background-size: 24px 24px;">
+</div>
+</section>
+<aside class="flex-[3] bg-sand dark:bg-[#1e1612] rounded-xl flex flex-col relative overflow-hidden border border-gray-100 dark:border-gray-800/50 p-4">
+<div class="flex items-center justify-between mb-4 px-1">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 bg-charcoal text-white rounded-lg flex items-center justify-center font-bold font-serif text-lg">B</div>
+<span class="bg-white border border-gray-200 text-[10px] font-bold text-gray-500 px-2 py-1 rounded-full tracking-wide">1 SESSION LEFT</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="bg-charcoal text-white text-xs font-semibold px-4 py-1.5 rounded-full hover:bg-black transition-colors font-inter">Sign up</button>
+<button class="text-gray-400 hover:text-charcoal transition-colors">
+<span class="material-icons-outlined text-xl">history</span>
+</button>
+</div>
+</div>
+<div class="flex-1 bg-white dark:bg-gray-800 rounded-[24px] shadow-sm flex flex-col overflow-hidden relative">
+<div class="flex-1 overflow-y-auto p-4 space-y-6 no-scrollbar pb-32">
+<div class="flex justify-end">
+<div class="bg-[#F2F0EB] dark:bg-primary/20 text-charcoal dark:text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[90%]">
+<p class="leading-relaxed text-sm font-inter">I want to build a personal finance app</p>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex gap-3 items-start">
+<div class="w-8 h-8 rounded-full bg-[#FCECE8] flex items-center justify-center flex-shrink-0 mt-1">
+<div class="w-3 h-3 rounded-full bg-accent"></div>
+</div>
+<div class="flex flex-col gap-2 max-w-[95%]">
+<p class="font-serif text-2xl text-charcoal dark:text-gray-200 leading-tight py-1.5">
+                                I have a few questions before I start researching.
+                            </p>
+<div class="space-y-4 w-full mt-2">
+<div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+<h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 font-inter">Which segment are you interested in?</h3>
+<div class="flex flex-wrap gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-accent bg-accent/10 text-accent text-xs font-semibold font-inter transition-all">
+<span class="material-icons-outlined text-sm">check</span>
+                                        Budgeting
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:bg-white dark:hover:bg-gray-600 transition-all bg-white dark:bg-gray-800">
+                                        Investment tracking
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:bg-white dark:hover:bg-gray-600 transition-all bg-white dark:bg-gray-800">
+                                        Expense splitting
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:bg-white dark:hover:bg-gray-600 transition-all bg-white dark:bg-gray-800">
+                                        All-in-one
+                                    </button>
+</div>
+</div>
+<div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+<h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 font-inter">Target market?</h3>
+<div class="flex flex-wrap gap-2">
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:border-accent/50 hover:text-accent transition-all bg-white dark:bg-gray-800">
+                                        US
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:border-accent/50 hover:text-accent transition-all bg-white dark:bg-gray-800">
+                                        India
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:border-accent/50 hover:text-accent transition-all bg-white dark:bg-gray-800">
+                                        Global
+                                    </button>
+<button class="px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-300 text-xs font-medium font-inter hover:border-accent/50 hover:text-accent transition-all bg-white dark:bg-gray-800">
+                                        Other...
+                                    </button>
+</div>
+</div>
+<div class="pt-2">
+<button class="w-full py-3 px-6 rounded-full bg-accent hover:bg-[#8F4D3A] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] font-inter">
+                                    Start Research
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="h-10"></div>
+</div>
+<div class="absolute bottom-4 left-4 right-4">
+<div class="bg-white dark:bg-gray-800 p-1.5 pl-3 rounded-full shadow-[0_4px_20px_-8px_rgba(0,0,0,0.15)] border border-gray-100 dark:border-gray-700 flex items-center gap-2">
+<button class="p-1.5 text-gray-400 hover:text-charcoal transition-colors flex items-center justify-center">
+<span class="material-icons-outlined text-xl">add_circle_outline</span>
+</button>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-charcoal dark:text-white placeholder-gray-400 text-sm py-2 px-1 font-inter" placeholder="Reply..." type="text"/>
+<button class="bg-charcoal hover:bg-black text-white px-5 py-2 rounded-full font-bold text-[10px] tracking-widest transition-all shadow-sm h-8 flex items-center justify-center mr-0.5">
+                        RUN
+                    </button>
+</div>
+</div>
+</div>
+</aside>
+</main>
+</body></html>

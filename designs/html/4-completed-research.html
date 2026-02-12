@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint Completed Research Dashboard</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Newsreader:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e63b19",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#211411",
+                        "sand": "#F9F7F2", // Adding the requested sand color
+                        "charcoal": "#333333",
+                        "muted": "#666666",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "serif": ["Newsreader", "serif"],
+                    },
+                    borderRadius: {"DEFAULT": "0.5rem", "lg": "1rem", "xl": "1.5rem", "2xl": "1.5rem", "3xl": "2rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for a cleaner look */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #e5e7eb;
+            border-radius: 20px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background-color: #d1d5db;
+        }
+        
+        body {
+            background-color: #F9F7F2; /* Sand background as requested */
+        }
+    </style>
+</head>
+<body class="font-display text-charcoal h-screen overflow-hidden flex flex-col">
+<!-- Top Navigation Placeholder (Optional context, keeping it minimal) -->
+<header class="h-16 px-8 flex items-center justify-between bg-[#F9F7F2] border-b border-stone-200/50 flex-shrink-0">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-lg">B</div>
+<span class="font-serif italic text-xl text-charcoal">Blueprint</span>
+<span class="mx-2 text-stone-300">/</span>
+<span class="text-sm font-medium text-muted">New Project</span>
+<span class="mx-2 text-stone-300">/</span>
+<span class="text-sm font-medium text-charcoal">Research Results</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-muted hover:text-primary transition-colors">
+<span class="material-icons-round">help_outline</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-stone-200 overflow-hidden">
+<img alt="User Avatar" class="w-full h-full object-cover" data-alt="Portrait of a young woman with a neutral expression" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCNtDMt-3_AAgXMcYCm5hAzBsYmt85ZTbGvh3TldvDZdT_sPrHykuZth91tNEmowB2jIay6ynRKilc0wHS7dpEVv6w12Twl9nO2P1WqtSGLJ_2BHx5uHR1RFIDWBx6wFjK1XGOb1kIHNWcQpMeOlwp-w9COeDp6UeJfJ9cqkau-mfFoeMkJe_cOoc_ecHL-zJLQrtTSNvexPB6zUFllx-xS-1NPDzu9cf2Gkm7aPiN6X85Z51DoyxZ2ERHd3noIAe5PeaAgly0cvPuq"/>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Panel: Research Results (70%) -->
+<section class="w-[70%] h-full p-6 pr-3 flex flex-col">
+<!-- Main Card Container -->
+<div class="bg-white rounded-[24px] shadow-sm border border-stone-100 flex flex-col h-full overflow-hidden">
+<!-- Tabs Header -->
+<div class="px-8 pt-6 border-b border-stone-100 flex-shrink-0">
+<div class="flex gap-8">
+<button class="pb-4 border-b-2 border-primary text-primary font-semibold flex items-center gap-2">
+                            Research
+                        </button>
+<button class="pb-4 border-b-2 border-transparent text-muted hover:text-charcoal transition-colors flex items-center gap-2 group">
+                            Blueprint
+                            <span class="px-2 py-0.5 bg-stone-100 text-stone-500 text-xs rounded-full group-hover:bg-stone-200">0</span>
+</button>
+</div>
+</div>
+<!-- Scrollable Content List -->
+<div class="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-6 bg-white">
+<!-- Card 1: Market Overview -->
+<article class="border border-stone-200 rounded-xl p-6 hover:shadow-md transition-shadow duration-200 group bg-stone-50/30">
+<div class="flex justify-between items-start mb-3">
+<h3 class="text-lg font-semibold text-charcoal">Market Overview: Personal Finance Apps</h3>
+<span class="bg-stone-100 text-stone-500 text-xs px-2 py-1 rounded-md uppercase tracking-wider font-medium">Summary</span>
+</div>
+<p class="text-muted leading-relaxed mb-6">
+                            The personal finance app market is currently shifting towards automated wealth management and AI-driven insights. Users are increasingly demanding features that go beyond simple expense tracking, looking for proactive budgeting advice and investment integration. Privacy-first architecture and bank-grade security remain top priorities for consumer trust.
+                        </p>
+<div class="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
+<button class="px-3 py-1.5 text-sm font-medium text-muted hover:text-charcoal flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">edit</span> Edit
+                            </button>
+<button class="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">delete</span> Delete
+                            </button>
+<button class="pl-3 pr-4 py-1.5 text-sm font-medium text-white bg-primary hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">add</span> Add to Blueprint
+                            </button>
+</div>
+</article>
+<!-- Card 2: Competitors List -->
+<article class="border border-stone-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow duration-200 group bg-white">
+<div class="p-6 pb-2">
+<h3 class="text-lg font-semibold text-charcoal mb-4 flex items-center gap-2">
+                                Competitors <span class="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">6</span>
+</h3>
+<div class="space-y-3">
+<!-- List Item 1 -->
+<div class="flex items-start gap-4 p-3 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer border border-transparent hover:border-stone-100">
+<div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold shrink-0">M</div>
+<div class="flex-1">
+<div class="flex justify-between">
+<h4 class="font-medium text-charcoal">Mint</h4>
+<span class="text-xs text-stone-400">Intuit</span>
+</div>
+<p class="text-sm text-muted line-clamp-1">Free budget tracker and planner focused on credit monitoring and bill tracking.</p>
+</div>
+</div>
+<!-- List Item 2 -->
+<div class="flex items-start gap-4 p-3 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer border border-transparent hover:border-stone-100">
+<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold shrink-0">Y</div>
+<div class="flex-1">
+<div class="flex justify-between">
+<h4 class="font-medium text-charcoal">YNAB (You Need A Budget)</h4>
+<span class="text-xs text-stone-400">YNAB</span>
+</div>
+<p class="text-sm text-muted line-clamp-1">Zero-based budgeting app designed to help users get out of debt and save money.</p>
+</div>
+</div>
+<!-- List Item 3 -->
+<div class="flex items-start gap-4 p-3 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer border border-transparent hover:border-stone-100">
+<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold shrink-0">M</div>
+<div class="flex-1">
+<div class="flex justify-between">
+<h4 class="font-medium text-charcoal">Monarch Money</h4>
+<span class="text-xs text-stone-400">Monarch</span>
+</div>
+<p class="text-sm text-muted line-clamp-1">Modern collaborative budgeting platform for couples and families.</p>
+</div>
+</div>
+</div>
+<div class="mt-4 text-center">
+<button class="text-sm text-primary font-medium hover:underline">View all 6 competitors</button>
+</div>
+</div>
+<div class="flex items-center justify-end gap-3 p-4 bg-stone-50 border-t border-stone-100 mt-2">
+<button class="px-3 py-1.5 text-sm font-medium text-muted hover:text-charcoal flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">edit</span> Edit
+                            </button>
+<button class="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">delete</span> Delete
+                            </button>
+<button class="pl-3 pr-4 py-1.5 text-sm font-medium text-white bg-primary hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">add</span> Add to Blueprint
+                            </button>
+</div>
+</article>
+<!-- Card 3: Competitor Detail (Mint) -->
+<article class="border border-stone-200 rounded-xl hover:shadow-md transition-shadow duration-200 group bg-white">
+<div class="p-6">
+<div class="flex justify-between items-start mb-4">
+<div>
+<h3 class="text-xl font-bold text-charcoal">Mint</h3>
+<p class="text-sm text-muted">by Intuit</p>
+</div>
+<div class="w-12 h-12 rounded-lg bg-stone-50 border border-stone-100 flex items-center justify-center p-2">
+<img alt="Abstract green leaf logo icon" class="w-full h-full object-contain mix-blend-multiply opacity-80" data-alt="Abstract green leaf shape representing Mint logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHQecD2kojMFlSsTYY7k0jmymElZwEUojIb_oFmWa5_6BXpj5a78Ds6W3iOsV8vR18880DCQryQZsN7-TqX23v7Jp6WWZOEVA4wDVnpykc1MaPbTm5L_hNktUnoOR3hOM2whIaQo7-tnwAbNwNrcmmz-uSbwZO0fMyG__fPCmG2frzJD4878zJoN5P1hLx7kykwCLxWqj4Z1Mn7n3XgQctEO5nvaGybWo2P1BaZUr1bAyiEqTF3-34Y8UI2fng-wsZAS180g4P8kSd"/>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+<div>
+<h4 class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Overview</h4>
+<p class="text-sm text-muted leading-relaxed">
+                                        Mint is one of the most popular free personal finance apps in the US. It connects to bank accounts, credit cards, and investments to provide a complete financial picture.
+                                    </p>
+</div>
+<div>
+<h4 class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Key Features</h4>
+<ul class="text-sm text-muted space-y-1 list-disc list-inside marker:text-primary">
+<li>Automated transaction categorization</li>
+<li>Credit score monitoring</li>
+<li>Bill tracking and reminders</li>
+<li>Customizable budget goals</li>
+</ul>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+<div>
+<h4 class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Pricing</h4>
+<p class="text-sm text-charcoal font-medium">Free (Ad-supported)</p>
+</div>
+<div>
+<h4 class="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2">Target Audience</h4>
+<p class="text-sm text-charcoal font-medium">General consumers, beginners</p>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-4 text-xs text-stone-400">
+<span class="material-icons-round text-sm">link</span>
+                                Source: <a class="hover:text-primary hover:underline transition-colors" href="#">intuit.com/mint</a>
+</div>
+</div>
+<div class="flex items-center justify-end gap-3 p-4 bg-stone-50 border-t border-stone-100">
+<button class="px-3 py-1.5 text-sm font-medium text-muted hover:text-charcoal flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">edit</span> Edit
+                            </button>
+<button class="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-600 flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">delete</span> Delete
+                            </button>
+<button class="pl-3 pr-4 py-1.5 text-sm font-medium text-white bg-primary hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-1 transition-colors">
+<span class="material-icons-round text-base">add</span> Add to Blueprint
+                            </button>
+</div>
+</article>
+<!-- Partial Card Hint (Scroll affordance) -->
+<div class="opacity-50 pointer-events-none">
+<article class="border border-stone-200 rounded-xl p-6 bg-white">
+<div class="h-4 bg-stone-200 rounded w-1/3 mb-4"></div>
+<div class="h-3 bg-stone-100 rounded w-full mb-2"></div>
+<div class="h-3 bg-stone-100 rounded w-2/3"></div>
+</article>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Sidebar: Conversation (30%) -->
+<aside class="w-[30%] h-full p-6 pl-3 flex flex-col relative">
+<!-- Conversation History -->
+<div class="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-24">
+<div class="space-y-6">
+<!-- Date Separator -->
+<div class="flex items-center justify-center my-4">
+<span class="text-xs text-stone-400 bg-[#F9F7F2] px-2 font-medium">Today, 10:23 AM</span>
+</div>
+<!-- User Query -->
+<div class="flex justify-end">
+<div class="bg-white border border-stone-200 rounded-2xl rounded-tr-sm py-3 px-4 shadow-sm max-w-[85%]">
+<p class="text-sm text-charcoal">Find competitors for a personal finance app that focuses on automated savings.</p>
+</div>
+</div>
+<!-- Progress Steps -->
+<div class="flex justify-start">
+<div class="max-w-[90%] space-y-3">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+<span class="material-icons-round text-green-600 text-sm">check</span>
+</div>
+<span class="text-sm text-charcoal">Analyzing market requirements...</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+<span class="material-icons-round text-green-600 text-sm">check</span>
+</div>
+<span class="text-sm text-charcoal">Scanning app stores and databases...</span>
+</div>
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+<span class="material-icons-round text-green-600 text-sm">check</span>
+</div>
+<span class="text-sm text-charcoal">Identifying key features &amp; pricing...</span>
+</div>
+</div>
+</div>
+<!-- System Final Message -->
+<div class="flex justify-start">
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white shrink-0 mt-1 shadow-sm">
+<span class="material-icons-round text-base">smart_toy</span>
+</div>
+<div class="space-y-2">
+<div class="bg-white border border-stone-200 rounded-2xl rounded-tl-sm p-4 shadow-sm">
+<p class="text-sm text-charcoal leading-relaxed">
+                                        Research complete. I found 6 competitors that match your criteria, including Mint, YNAB, and Monarch.
+                                    </p>
+<p class="text-sm text-charcoal leading-relaxed mt-2">
+                                        I've also compiled a market overview. Review the results on the left and add what's useful to your Blueprint.
+                                    </p>
+</div>
+<div class="text-xs text-stone-400 pl-2">Just now</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Floating Input Area -->
+<div class="absolute bottom-6 left-3 right-6">
+<div class="bg-white rounded-xl shadow-lg border border-primary/20 p-2 flex flex-col gap-2 ring-1 ring-primary/10">
+<textarea class="w-full border-none resize-none bg-transparent text-sm p-2 focus:ring-0 placeholder:text-stone-400 text-charcoal" placeholder="Ask a follow-up question..." rows="1"></textarea>
+<div class="flex justify-between items-center px-1">
+<button class="p-1.5 text-stone-400 hover:text-primary transition-colors rounded-lg hover:bg-stone-50">
+<span class="material-icons-round text-lg">attach_file</span>
+</button>
+<button class="bg-primary hover:bg-red-700 text-white rounded-lg p-1.5 transition-colors shadow-sm flex items-center justify-center">
+<span class="material-icons-round text-lg">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</main>
+</body></html>

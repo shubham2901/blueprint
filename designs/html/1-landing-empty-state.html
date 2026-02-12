@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint Landing - Cozy Sand Variant</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#C27B66", // Soft terracotta
+                        "primary-dark": "#A86551",
+                        "sand-light": "#F9F7F2", // Background cream
+                        "sand-dark": "#F2EFE9", // Slightly darker sand for inputs/surfaces
+                        "charcoal": "#46423F", // Warm deep brown/charcoal
+                        "charcoal-light": "#78726D", // Lighter text
+                        "stone": "#E6E2DC", // Borders/dividers
+                    },
+                    fontFamily: {
+                        "sans": ["Inter", "sans-serif"],
+                        "serif": ["Newsreader", "serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "2xl": "1.5rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="font-sans bg-sand-light h-screen overflow-hidden text-charcoal flex flex-col antialiased">
+<div class="flex-1 flex w-full h-full overflow-hidden p-3 gap-3">
+<main class="flex-1 bg-white rounded-2xl border border-stone shadow-sm flex flex-col relative z-0 overflow-hidden">
+<header class="h-24 flex items-end px-12">
+<div class="flex space-x-8 h-12 border-b border-stone w-full items-end">
+<button class="relative h-12 flex items-center text-base font-serif italic text-charcoal px-2">
+                    Research
+                    <div class="absolute bottom-[-1px] left-0 w-full h-[3px] bg-primary rounded-t-full"></div>
+</button>
+<button class="relative h-12 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-2">
+                    Blueprint
+                </button>
+</div>
+</header>
+<div class="flex-1 flex items-center justify-center p-12">
+<div class="text-center">
+<div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-sand-light border border-stone flex items-center justify-center shadow-inner">
+<span class="material-symbols-outlined text-3xl text-primary/60">local_library</span>
+</div>
+<h3 class="font-serif text-xl text-charcoal mb-2 italic">Begin your inquiry</h3>
+<p class="text-charcoal-light font-normal text-sm tracking-wide max-w-xs mx-auto">Your research notes and discovered insights will be collected here on this canvas.</p>
+</div>
+</div>
+</main>
+<aside class="w-[35%] min-w-[400px] max-w-[550px] bg-sand-dark rounded-2xl border border-stone flex flex-col h-full relative z-10 shadow-sm overflow-hidden">
+<header class="h-24 flex items-center justify-between px-8 shrink-0 bg-sand-dark/50 backdrop-blur-sm border-b border-stone/30">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-charcoal rounded-lg flex items-center justify-center shadow-md">
+<span class="font-serif italic text-sand-light text-sm font-bold">B</span>
+</div>
+<h2 class="font-serif font-medium text-charcoal text-lg tracking-tight">Blueprint</h2>
+</div>
+<div class="flex items-center gap-3">
+<div class="hidden sm:flex items-center gap-2 bg-white/60 px-2.5 py-1.5 rounded-full border border-stone/40">
+<div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] font-semibold text-charcoal-light whitespace-nowrap uppercase tracking-wider">1 session left</span>
+</div>
+<div class="flex items-center gap-2">
+<a class="text-xs font-semibold px-4 py-1.5 bg-white border border-stone text-charcoal hover:bg-stone/20 transition-all rounded-full shadow-sm" href="#">Sign up</a>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone/50 text-charcoal-light hover:text-charcoal transition-colors">
+<span class="material-symbols-outlined text-xl">history</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto px-8 py-4 flex flex-col no-scrollbar">
+<div class="mt-8 space-y-6">
+<h1 class="text-4xl font-serif italic text-charcoal leading-tight">What are you exploring today?</h1>
+<p class="text-charcoal-light leading-relaxed text-sm font-light pr-4">
+                    Describe a product, market, or idea. Blueprint deconstructs complex topics into actionable, human-readable insights.
+                </p>
+<div class="pt-6 flex flex-wrap gap-3">
+<button class="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-stone hover:border-primary/50 hover:shadow-sm transition-all">
+<span class="text-xs font-medium text-charcoal-light group-hover:text-primary">Market Analysis</span>
+</button>
+<button class="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-stone hover:border-primary/50 hover:shadow-sm transition-all">
+<span class="text-xs font-medium text-charcoal-light group-hover:text-primary">Competitor Tracking</span>
+</button>
+<button class="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-stone hover:border-primary/50 hover:shadow-sm transition-all">
+<span class="text-xs font-medium text-charcoal-light group-hover:text-primary">User Personas</span>
+</button>
+</div>
+</div>
+<div class="flex-1"></div>
+</div>
+<div class="mt-auto px-8 pb-8 pt-4">
+<div class="relative bg-white rounded-2xl shadow-sm border border-stone focus-within:border-primary/40 focus-within:shadow-md transition-all duration-300">
+<div class="flex">
+<div class="flex flex-col gap-1.5 p-3 border-r border-stone/30 bg-sand-light/10">
+<button class="p-2 rounded-xl hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center" title="Attach link">
+<span class="material-symbols-outlined text-[20px]">add_link</span>
+</button>
+<button class="p-2 rounded-xl hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center" title="Upload image">
+<span class="material-symbols-outlined text-[20px]">image</span>
+</button>
+</div>
+<div class="flex-1 flex flex-col">
+<textarea class="w-full bg-transparent border-none px-4 py-4 text-sm text-charcoal placeholder-charcoal-light/60 focus:ring-0 resize-none h-32 font-sans leading-relaxed" placeholder="I want to understand the competitive landscape of..." rows="2"></textarea>
+<div class="flex justify-end items-center px-4 pb-4">
+<button class="flex items-center gap-2 px-6 py-2.5 bg-charcoal hover:bg-primary-dark rounded-xl text-sand-light transition-all shadow-md group">
+<span class="text-xs font-bold tracking-widest">RUN</span>
+<span class="material-symbols-outlined text-[16px] group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<div class="flex justify-between mt-4 px-2">
+<span class="text-[10px] text-charcoal-light/60 font-medium tracking-wide uppercase">Model: Blueprint v2.0 (Scholar)</span>
+<span class="text-[10px] text-charcoal-light/60">Press <span class="font-bold font-mono text-charcoal/60 bg-stone/40 px-1 rounded">Return</span> to send</span>
+</div>
+</div>
+</aside>
+</div>
+
+</body></html>

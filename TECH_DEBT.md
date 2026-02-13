@@ -266,6 +266,12 @@ These are from the product roadmap in [PLAN.md](PLAN.md). Each new module follow
 - **V0 workaround**: None. User can select + copy text manually.
 - **Migration path**: Serialize Blueprint entries to Markdown string, copy to clipboard.
 
+### Refine Prompt Loop (Back from Clarification) — V1
+- **What**: Allow users to go back from the clarification step and edit their original prompt instead of answering the clarification questions.
+- **V0 workaround**: None. Users must answer the presented clarification questions or start a new research session with a different prompt.
+- **Migration path**: Add a "Refine prompt" button to `ClarificationPanel.tsx`. On click, reset the research state to `idle` or `editing_prompt` phase in the `Sidebar.tsx` state machine. User edits the prompt and resubmits via `POST /api/research` (creates a new journey). The previous journey remains saved with `status: "active"`.
+- **When to do it**: After V0 feedback shows users frequently want to modify their initial query after seeing clarification questions.
+
 ### Collapsed Sidebar — V0 Phase 5
 - **What**: Screen 9 design shows a collapsed sidebar state (thin strip with logo + expand icon).
 - **When**: Built in Phase 5 as part of polish. Included here as a V0 item that's in a later phase.

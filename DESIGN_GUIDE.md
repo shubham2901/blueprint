@@ -158,3 +158,65 @@
 
 - Small-caps technical metadata in muted gray, 11-12px: `MODEL: BLUEPRINT V2.0`
 - Keyboard shortcut hints in the same style: `Cmd+Enter to send`
+
+---
+
+## 9. Error States and User-Facing Error Display
+
+All errors shown to the user follow a strict pattern: a friendly human-readable message plus a reference code. **Never** show raw error strings, stack traces, HTTP status codes, provider names, or technical details.
+
+### Error Reference Code
+
+- Format: `Ref: BP-XXXXXX` (6 uppercase hex characters, e.g., `Ref: BP-3F8A2C`)
+- Generated on the backend via `generate_error_code()` and included in every `block_error` and `error` SSE event
+- Displayed in all error UI so users can quote it when reporting issues
+- The same code appears in backend logs — the team greps for it to find the exact failure
+
+### Block Error Card (inline, per-block failure)
+
+- **Background**: `bg-amber-50` (soft amber/yellow)
+- **Border**: `border-amber-200` (1px, left accent or full border)
+- **Icon**: Warning triangle icon in `text-amber-600`
+- **Block name**: Inter semibold 14px, `text-amber-800`
+- **Error message**: Inter regular 14px, `text-amber-800` — friendly, never technical
+- **Reference code**: Inter regular 12px, `text-amber-600` — displayed below the error message as `Ref: BP-XXXXXX`
+- **Action**: "Try again" button (secondary style — charcoal background, white text, 8px radius)
+- **Layout**: Same width as research block cards. Compact padding (16px).
+
+### Toast Notification (recoverable error)
+
+- Appears at the top of the Sidebar panel
+- **Background**: White card with `border-error` left accent (4px, Muted Red `#C45C5C`)
+- **Icon**: Alert circle icon in `text-error` (Muted Red)
+- **Message**: Inter regular 14px, `text-charcoal` — friendly message
+- **Reference code**: Inter regular 11px, `text-secondary` — `Ref: BP-XXXXXX`
+- **Auto-dismiss**: 8 seconds. No manual close button needed (but nice to have).
+- **Animation**: Fade in from top, fade out.
+
+### Error Modal (non-recoverable error)
+
+- Full modal overlay (same as AuthModal pattern — uses shadcn/ui Dialog)
+- **Background**: White, `rounded-card` (16px)
+- **Icon**: Large alert circle icon in `text-error`, centered above heading
+- **Heading**: Newsreader serif, 20px, `text-charcoal` — "Something went wrong"
+- **Message**: Inter regular 14px, `text-secondary` — friendly, 1-2 sentences
+- **Reference code**: Inter mono/regular 13px, `text-secondary`, inside a `bg-sand rounded-lg px-3 py-2` pill — **clickable to copy**. On click, brief "Copied!" tooltip or text change.
+- **Action**: "Start New Research" button (primary — terracotta background, white text)
+- **Layout**: Centered content, 24px spacing between elements.
+
+### REST Error (non-SSE, inline)
+
+- When a REST fetch fails (e.g., loading journeys on dashboard), display an inline error message in place of the expected content.
+- **Message**: Inter regular 14px, `text-secondary` — "Could not load data. (Ref: BP-XXXXXX)"
+- The ref code here comes from the `X-Request-Id` header that was sent with the request.
+- Optionally include a "Retry" text button (`text-terracotta`, underline on hover).
+
+### What to NEVER show
+
+- Raw exception messages (e.g., `"litellm.RateLimitError: ..."`)
+- HTTP status codes (e.g., `"Error 500"`, `"Error 429"`)
+- Provider names (e.g., `"Gemini failed"`, `"Tavily returned 403"`)
+- Internal model names (e.g., `"gemini/gemini-2.0-flash"`)
+- JSON parsing errors (e.g., `"Unexpected token < in JSON at position 0"`)
+- Stack traces or file paths
+- Database error messages

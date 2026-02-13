@@ -26,14 +26,14 @@ A product and market research tool for B2C software. A PM or founder describes w
 
 #### Module B2 — Competitor Finder
 
-- Given clarified context, find 5-10 competitors via web search + Reddit (Google site-search)
+- Given clarified context, find 5-10 competitors via web search + Reddit (site-search via Tavily/Serper)
 - For each competitor: name, one-line description, URL, category, estimated pricing model
 - Present as a selectable list (checkboxes) — user picks which ones to explore further
 
 #### Module B2.5 — Deep Explorer + Gap Analyzer
 
 - "Explore" triggers a deeper profile for selected competitors: features summary, pricing tiers, target audience, strengths/weaknesses, user sentiment from Reddit
-- Data sources: product websites (Jina/BS4 scraping) + Reddit threads (via Google site-search `site:reddit.com`)
+- Data sources: product websites (Jina/BS4 scraping) + Reddit threads (via site-search `site:reddit.com` through Tavily/Serper)
 - For `build` intent only: after profiles, generate a gap analysis identifying underserved/unserved market needs
 - User selects problem areas from the gap analysis → system generates a focused problem statement
 
@@ -122,7 +122,7 @@ A product and market research tool for B2C software. A PM or founder describes w
 | Backend | FastAPI (Python 3.12, async, Pydantic v2) | $0 |
 | Database | Supabase (PostgreSQL only — no Auth in V0) | $0 (free tier) |
 | LLM | Gemini 2.0 Flash via litellm | $0 (free tier) |
-| Search | Google Custom Search API (100/day free) + DuckDuckGo fallback | $0 |
+| Search | Tavily Search API (primary) + Serper (fallback) + DuckDuckGo (last-resort) | $0 |
 | Scraping | Jina Reader API (20 RPM free) + httpx + BeautifulSoup fallback | $0 |
 | Hosting | Railway (two services in one project) | $5/mo |
 | UI Components | shadcn/ui (Radix + Tailwind) | $0 |
@@ -138,7 +138,7 @@ A product and market research tool for B2C software. A PM or founder describes w
 - Single LLM tier — free only (Gemini 2.0 Flash with fallback chain)
 - Intent classification (5 types: `build`, `explore`, `improve`, `small_talk`, `off_topic`)
 - Multi-question clarification (platform, audience, positioning, etc.)
-- Reddit data via Google site-search (`site:reddit.com {query}`)
+- Reddit data via site-search (`site:reddit.com {query}` through Tavily/Serper)
 - Basic gap analysis (build intent only) — LLM-synthesized market gaps from competitor profiles
 - Problem statement generation (build intent only) — actionable problem definition from selected gaps
 - Global product cache with 7-day TTL (shared across all visitors)
@@ -180,7 +180,7 @@ backend/
     main.py              # FastAPI app, CORS, rate limiting middleware
     config.py            # Pydantic Settings (env vars) + LLM_CONFIG dict (persona, models, fallback chain)
     llm.py               # litellm calls, persona injection, reactive fallback, provider state persistence
-    search.py            # serper_search() + duckduckgo_search() (last-resort) + search_reddit() via Serper
+    search.py            # tavily_search() (primary) + serper_search() (fallback) + duckduckgo_search() (last-resort) + search_reddit()
     scraper.py           # jina_scrape() + bs4_scrape() with try/except fallback
     alternatives.py      # AlternativeTo scraper + CLI seeder for alternatives_cache table
     app_stores.py        # Google Play + Apple App Store scrapers (V0-EXPERIMENTAL)
@@ -391,7 +391,8 @@ GET  /api/health
 GEMINI_API_KEY=...                # Primary LLM provider
 OPENAI_API_KEY=...                # Fallback LLM provider
 ANTHROPIC_API_KEY=...             # Fallback LLM provider
-SERPER_API_KEY=...                 # Serper API for web + Reddit search
+TAVILY_API_KEY=...                # Tavily Search API — primary web + Reddit search
+SERPER_API_KEY=...                 # Serper API — fallback search provider
 SUPABASE_URL=...                  # Supabase project URL
 SUPABASE_SERVICE_KEY=...          # Supabase service role key (server-side only)
 JINA_API_KEY=...                  # Optional — Jina Reader works without key at lower rate
@@ -473,7 +474,7 @@ Each phase produces something testable in the browser.
 
 ### Phase 7 — Tests + Deploy
 
-- Backend tests: `test_llm.py` (mock litellm calls), `test_search.py` (mock Google/DDG), `test_api.py` (SSE endpoint integration)
+- Backend tests: `test_llm.py` (mock litellm calls), `test_search.py` (mock Tavily/Serper/DDG), `test_api.py` (SSE endpoint integration)
 - Supabase: create all tables via SQL editor
 - Railway: deploy both services, configure env vars
 - End-to-end smoke test on production

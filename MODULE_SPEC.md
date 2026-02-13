@@ -39,6 +39,9 @@ Cross-references: [PLAN.md](PLAN.md) (product scope, DB schema), [ARCHITECTURE.m
 **Dependencies**: `pydantic_settings`
 
 ```python
+import uuid
+from datetime import datetime, timezone
+
 from pydantic_settings import BaseSettings
 
 
@@ -51,7 +54,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""       # Optional fallback
 
     # Search
-    serper_api_key: str              # Serper API for web + Reddit search
+    tavily_api_key: str              # Tavily Search API — primary web + Reddit search
+    serper_api_key: str = ""         # Serper API — fallback search provider (recommended)
 
     # Scraping
     jina_api_key: str = ""            # Optional — Jina works without key at lower rate
@@ -71,15 +75,64 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+# ──────────────────────────────────────────────────────
+# Logging Utilities (V0 — structured print, replaced by structlog in V1)
+# ──────────────────────────────────────────────────────
+
+def generate_error_code() -> str:
+    """Generate a short, user-friendly error reference code.
+
+    Format: 'BP-' followed by 6 uppercase hex characters.
+    Example: 'BP-3F8A2C'
+
+    Used whenever an error is surfaced to the user (via ErrorEvent or BlockErrorEvent SSE).
+    The same code is logged on the backend AND sent to the user, so the user can
+    quote it and the team can grep logs for it.
+    """
+    return f"BP-{uuid.uuid4().hex[:6].upper()}"
+
+
+def log(level: str, message: str, **context) -> None:
+    """Structured print-based logger for V0.
+
+    Every log line follows the format:
+        [ISO_TIMESTAMP] [LEVEL] message | key1=value1 key2=value2
+
+    Args:
+        level: One of "INFO", "WARN", "ERROR".
+        message: Human-readable description of what happened.
+        **context: Arbitrary key-value pairs. Always include journey_id when available.
+
+    Usage:
+        log("INFO", "pipeline started", journey_id="abc-123", pipeline="classify")
+        log("ERROR", "llm call failed", journey_id="abc-123", provider="gemini",
+            error_code="BP-3F8A2C", error=str(e))
+    """
+    ts = datetime.now(timezone.utc).isoformat()
+    ctx = " ".join(f"{k}={v}" for k, v in context.items())
+    print(f"[{ts}] [{level}] {message} | {ctx}")
+
+
+# ──────────────────────────────────────────────────────
+# LLM Configuration
+# ──────────────────────────────────────────────────────
+
 # LLM Configuration (see ARCHITECTURE.md ADR-2 and ADR-3)
 LLM_CONFIG = {
     "persona": {
         "name": "Blueprint",
         "system_prompt": (
-            "You are Blueprint, a product research assistant. You help product managers "
-            "and founders understand competitive landscapes. Be concise, structured, "
-            "and always cite sources. Use bullet points for features and comparisons. "
-            "Never fabricate data — if unsure, say so."
+            "You are Blueprint, a product and market research assistant for B2C software. "
+            "You help product managers and founders explore competitive landscapes, identify market gaps, "
+            "and define focused problem statements.\n\n"
+            "Guidelines:\n"
+            "- Be concise and structured. Use bullet points for features and comparisons.\n"
+            "- Always cite sources when referencing specific data. If information is unavailable, say so — never fabricate.\n"
+            "- Output strictly valid JSON when instructed. No markdown code fences, no explanation text outside the JSON.\n"
+            "- Stay within your domain: product strategy, market research, and competitive analysis. "
+            "Decline requests for code generation, homework, creative writing, or general knowledge.\n"
+            "- When analyzing products, be balanced — acknowledge both strengths and weaknesses.\n"
+            "- Ground all claims in provided data. Do not speculate beyond what the evidence supports."
         ),
     },
     "temperature": 0.3,
@@ -96,6 +149,8 @@ LLM_CONFIG = {
 - `settings` is a module-level singleton. Import it directly: `from app.config import settings`.
 - `LLM_CONFIG` is a plain dict, not a Pydantic model. It's read-only at runtime.
 - `cors_origins` is a comma-separated string, split in `main.py` when configuring CORS middleware.
+- `log()` and `generate_error_code()` are imported as: `from app.config import log, generate_error_code`.
+- In V1, replace the `log()` function body with `structlog.get_logger()` calls — all existing call sites keep working.
 
 ---
 
@@ -123,7 +178,7 @@ class SelectionRequest(BaseModel):
     """Body for POST /api/research/{journey_id}/selection"""
     step_type: str = Field(..., description="'clarify' | 'select_competitors' | 'select_problems'")
     selection: dict = Field(..., description="Selection payload — shape depends on step_type")
-    # For clarify:             { "answers": [{ "question_id": "platform", "selected_options": ["Mobile", "Web"] }, ...] }
+    # For clarify:             { "answers": [{ "question_id": "platform", "selected_option_ids": ["mobile", "web"] }, ...] }
     # For select_competitors:  { "competitor_ids": ["notion", "obsidian"] }
     # For select_problems:     { "problem_ids": ["gap-mobile-first", "gap-offline-sync"] }
 ```
@@ -171,6 +226,7 @@ class BlockErrorEvent(BaseModel):
     type: str = "block_error"
     block_name: str
     error: str
+    error_code: str          # User-facing ref code, e.g., "BP-3F8A2C" — generated by generate_error_code()
 
 
 class ClarificationNeededEvent(BaseModel):
@@ -193,6 +249,7 @@ class ErrorEvent(BaseModel):
     type: str = "error"
     message: str
     recoverable: bool
+    error_code: str          # User-facing ref code, e.g., "BP-3F8A2C" — generated by generate_error_code()
 ```
 
 ### Block Models
@@ -202,7 +259,14 @@ class ResearchBlock(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: str              # "market_overview" | "competitor_list" | "product_profile" | "gap_analysis" | "problem_statement"
     title: str
-    content: str           # Markdown-formatted content
+    content: str           # Markdown-formatted content (for display)
+    output_data: Optional[dict] = None  # Typed structured data (for programmatic use by frontend components)
+    # output_data shape depends on block type:
+    #   competitor_list:    { "competitors": [CompetitorInfo...] }
+    #   gap_analysis:       { "problems": [ProblemArea...] }
+    #   product_profile:    { "profile": ProductProfile }
+    #   problem_statement:  { "statement": ProblemStatement }
+    #   market_overview:    { "overview": MarketOverview }
     sources: list[str] = []
     cached: bool = False
     cached_at: Optional[datetime] = None
@@ -216,7 +280,8 @@ class ClarificationQuestion(BaseModel):
 
 
 class ClarificationOption(BaseModel):
-    label: str
+    id: str                            # Stable slug ID, e.g., "mobile", "web", "text-notes"
+    label: str                         # Display label, e.g., "Mobile"
     description: str = ""              # Brief description shown as sublabel under chip
 ```
 
@@ -228,7 +293,8 @@ class ClassifyResult(BaseModel):
     Validated output from the classify prompt.
 
     Note: The LLM returns question field as "text" — the backend maps it to "label"
-    after parsing. Options come as [{label, description}] from the LLM directly.
+    after parsing. Options come as [{id, label, description}] from the LLM directly.
+    The LLM is instructed to emit stable slug IDs for each option.
     """
     intent_type: str           # "build" | "explore" | "improve" | "small_talk" | "off_topic"
     domain: Optional[str] = None       # e.g., "note-taking" (present for build/explore/improve)
@@ -757,7 +823,7 @@ class LLMValidationError(Exception):
 
 ## 5. `backend/app/search.py`
 
-**Purpose**: Web search — Serper API (primary) with DuckDuckGo as last-resort emergency fallback.
+**Purpose**: Web search — Tavily API (primary) with Serper as fallback and DuckDuckGo as last-resort emergency fallback.
 
 **Dependencies**: `httpx`, `app.config.settings`
 
@@ -779,9 +845,10 @@ async def search(query: str, num_results: int = 10) -> list[SearchResult]:
     Search the web for the given query.
 
     Steps:
-        1. Try Serper API
-        2. On failure (network error, invalid API key): try DuckDuckGo (last-resort)
-        3. If both fail: return empty list (caller handles gracefully)
+        1. Try Tavily API (primary)
+        2. On failure: try Serper API (fallback)
+        3. On failure: try DuckDuckGo (last-resort)
+        4. If all fail: return empty list (caller handles gracefully)
 
     Args:
         query: Search query string, e.g., "personal note-taking app competitors 2026"
@@ -792,9 +859,27 @@ async def search(query: str, num_results: int = 10) -> list[SearchResult]:
     """
 
 
+async def _tavily_search(query: str, num_results: int = 10) -> list[SearchResult]:
+    """
+    Call Tavily API for web search (primary provider).
+
+    Endpoint: POST https://api.tavily.com/search
+    Headers: Content-Type: application/json
+    Body: { "api_key": tavily_api_key, "query": query, "max_results": num_results, "search_depth": "basic" }
+    Rate limit: 1,000 queries/month (free tier); paid plans scale
+
+    Returns:
+        List of SearchResult parsed from response["results"].
+        Each result has: title, url, content (used as snippet).
+
+    Raises:
+        SearchError on non-200 response or network error.
+    """
+
+
 async def _serper_search(query: str, num_results: int = 10) -> list[SearchResult]:
     """
-    Call Serper API for web search.
+    Call Serper API for web search (fallback provider).
 
     Endpoint: POST https://google.serper.dev/search
     Headers: X-API-KEY: {serper_api_key}, Content-Type: application/json
@@ -807,6 +892,9 @@ async def _serper_search(query: str, num_results: int = 10) -> list[SearchResult
 
     Raises:
         SearchError on non-200 response or network error.
+
+    Notes:
+        Only called when Tavily fails. Skipped if serper_api_key is empty.
     """
 
 
@@ -814,7 +902,7 @@ async def _duckduckgo_search(query: str, num_results: int = 10) -> list[SearchRe
     """
     Last-resort emergency fallback search via DuckDuckGo.
 
-    Only used when Serper is completely down (network error, API key invalid).
+    Only used when both Tavily and Serper are completely down (network error, API keys invalid).
     Uses the `duckduckgo_search` Python package (DDGS).
     No API key needed, no hard rate limit.
 
@@ -828,9 +916,10 @@ async def _duckduckgo_search(query: str, num_results: int = 10) -> list[SearchRe
 
 async def search_reddit(query: str, num_results: int = 5) -> list[SearchResult]:
     """
-    Search Reddit for the given query using Serper site-search.
+    Search Reddit for the given query using site-search.
 
     Wraps the standard search() function with a site:reddit.com prefix.
+    Uses the same Tavily → Serper → DuckDuckGo fallback chain.
 
     Args:
         query: Search query string, e.g., "Notion note taking review"
@@ -852,11 +941,12 @@ class SearchError(Exception):
 ```
 
 **Notes**:
-- Serper API provides structured JSON results (organic, knowledgeGraph, relatedSearches). We use `organic[]` for search results.
-- DuckDuckGo is a last-resort emergency fallback — only used when Serper is completely unavailable (network error, invalid key). Not a co-primary provider.
+- **Tavily** is the primary search provider. It returns AI-optimized structured results. We use `results[]` from the response.
+- **Serper** is the first fallback — only used when Tavily fails. Provides Google Search results as structured JSON. Skipped if `serper_api_key` is empty.
+- **DuckDuckGo** is a last-resort emergency fallback — only used when both Tavily and Serper are completely unavailable (network errors, invalid keys). Not a co-primary provider.
 - Search results are raw — the LLM processes them into structured competitor data in `prompts.py` + `llm.py`.
-- `httpx.AsyncClient` is used for Serper API calls. Timeout: 10 seconds.
-- `search_reddit()` is a thin wrapper — it reuses the same Serper/DuckDuckGo fallback chain with a `site:reddit.com` prefix. This keeps Reddit search cost-shared with regular search.
+- `httpx.AsyncClient` is used for Tavily and Serper API calls. Timeout: 10 seconds.
+- `search_reddit()` is a thin wrapper — it reuses the same Tavily/Serper/DuckDuckGo fallback chain with a `site:reddit.com` prefix. This keeps Reddit search cost-shared with regular search.
 
 ---
 
@@ -1185,111 +1275,311 @@ def build_classify_prompt(user_input: str) -> list[dict]:
     # This prompt focuses purely on the classification and clarification task.
     #
     CLASSIFY_PROMPT = """
+
 # Role
-You are the "Gatekeeper" AI for a product research tool called Blueprint. Your goal is to analyze user input, classify their intent, extract the relevant domain, and generate necessary follow-up data.
+You are the "Gatekeeper" module for Blueprint, a product research tool. Given a user's raw input, you perform three tasks in one pass:
+1. Classify their intent.
+2. Extract the research domain (if applicable).
+3. Generate tailored clarification questions (if applicable) OR a quick reply.
 
-# Input Processing
-You will receive a raw string: `user_input`.
+You output a single JSON object. Nothing else — no markdown, no explanation, no text before or after the JSON.
 
-# Classification Rules
-Analyze the input and assign one of the following `intent_type` labels.
+# Intent Classification
 
-**CRITICAL CONSTRAINT:** Your focus is strictly **Product Strategy & Market Research**.
-- **ALLOWED:** Conceptualization, Feature Specs, Market Analysis, Technical Architecture/Stack Strategy.
-- **FORBIDDEN:** Writing actual code, solving math homework, creative writing, or general chatbot conversation.
+Classify the input into exactly one of these five types:
 
-1. **build**: The user wants to conceptualize, design, or spec out a specific product or feature.
-   - *Valid:* "I want to build a note-taking app", "What tech stack is best for a high-scale dating app?", "Design an onboarding flow."
-   - *Invalid:* "Write the Python code for this", "Debug my React component", "How do I install Node.js?" → `off_topic`
-2. **explore**: The user wants to learn about a market, competitor, or product category.
-   - *Trigger:* Information-seeking phrasing or standalone entity names.
-   - *Example:* "Tell me about EdTech in India", "Notion", "Tinder vs Bumble".
-3. **improve**: The user has an existing product/project concept and wants to enhance it.
-   - *Trigger:* Words like "fix", "optimize", "critique", "differentiate".
-   - *Example:* "How do I make my CRM better than Salesforce?"
-4. **small_talk**: Greetings, compliments, or conversational filler.
-   - *Example:* "Hi there", "Good morning".
-5. **off_topic**: Requests unrelated to product strategy.
-   - *Example:* "What is the capital of France?", "Write a poem", "Python code for Fibonacci", "Solve this equation".
+## build
+The user wants to conceptualize, design, or spec out a NEW product or feature.
+- Trigger words/patterns: "build", "create", "make", "design", "launch", "start", "develop", "spec out", "onboarding flow for...", "what tech stack for..."
+- The user is describing something that doesn't exist yet, or a new take on something.
+- IMPORTANT: This is about product STRATEGY — not writing code. If the input asks you to write code, debug code, or solve a programming problem, classify as off_topic.
+- Examples:
+  - "I want to build a note-taking app" → build
+  - "Design an onboarding flow for a fitness app" → build
+  - "What tech stack is best for a high-scale dating app?" → build
+  - "I have an idea for a meal planning subscription" → build
 
-# Field Extraction Rules
+## explore
+The user wants to learn about an existing market, product category, or specific product.
+- Trigger words/patterns: "tell me about", "what is", "how does X work", "compare", "vs", or simply a bare product/category name.
+- A standalone entity name (e.g., "Notion", "Figma", "Tinder vs Bumble") defaults to explore — the user wants to understand the space, not build or improve.
+- Examples:
+  - "Tell me about edtech in India" → explore
+  - "Notion" → explore
+  - "Tinder vs Bumble" → explore
+  - "What's happening in fintech?" → explore
 
-## 1. Domain
-Identify the business or research domain.
-- If `small_talk` or `off_topic`: Set `domain` to null.
-- If the input is specific (e.g., "Tinder"), map it to the broader category (e.g., "Entertainment & Media" or "Dating").
-- **Reference Hierarchy & Examples:**
-  - **Commerce & Retail:**
-    - mCommerce (Nike, Zara)
-    - Multi-Vendor Marketplaces (Amazon, Etsy)
-    - Social Commerce (TikTok Shop, Pinterest)
-    - Re-commerce/Second-hand (Depop, Vinted)
-    - Direct-to-Consumer/DTC (Dollar Shave Club, Warby Parker)
-  - **On-Demand & Gig Economy:**
-    - Food Delivery (UberEats, DoorDash)
-    - Ride-Hailing (Uber, Lyft)
-    - Grocery Delivery (Instacart, Gopuff)
-    - Home Services (TaskRabbit, Urban Company)
-  - **FinTech:**
-    - Neobanking (Chime, Revolut)
-    - Peer-to-Peer Payments (Venmo, Cash App)
-    - Investment & Trading (Robinhood, Coinbase)
-    - Personal Finance (Mint, YNAB)
-  - **Health & Wellness:**
-    - Telehealth (Teladoc, Zocdoc)
-    - Fitness & Training (Strava, Peloton)
-    - Mental Health (Headspace, Calm)
-    - FemTech (Flo, Clue)
-  - **Education (EdTech):**
-    - Language Learning (Duolingo, Babbel)
-    - Skill Development (MasterClass, Udemy)
-    - K-12 Support (Khan Academy, Photomath)
-    - Test Prep (Magoosh, Kaplan)
-  - **Travel & Hospitality:**
-    - Booking Aggregators (Booking.com, Skyscanner)
-    - Home Sharing (Airbnb, Vrbo)
-    - Travel Planning (TripIt, Wanderlog)
-    - Experience Booking (Viator, Eventbrite)
-  - **Entertainment & Media:**
-    - Video Streaming (Netflix, Disney+)
-    - Audio Streaming (Spotify, Audible)
-    - Dating (Tinder, Bumble)
-    - Social Networking (Instagram, Discord)
-  - **Real Estate (PropTech):**
-    - Listing Platforms (Zillow, Rightmove)
-    - Rental/Roommate Finders (SpareRoom, PadMapper)
-  - **Lifestyle & Niche:**
-    - Pet Services (Rover, Chewy)
-    - Astrology (Co-Star, The Pattern)
-    - Recipe & Cooking (Yummly, Tasty)
+## improve
+The user has an EXISTING product or project and wants to make it better or differentiate it.
+- Trigger words/patterns: "improve", "fix", "optimize", "critique", "differentiate", "make X better", "my app/product/tool".
+- The possessive "my" is a strong signal — the user has something already.
+- Examples:
+  - "How do I make my CRM better than Salesforce?" → improve
+  - "Critique my fitness tracker concept" → improve
+  - "How can I differentiate from Notion?" → improve
 
-## 2. Clarification Questions
-If (and ONLY if) intent is `build`, `explore`, or `improve`, generate 2-4 multiple-choice questions to refine the user's request.
-- **Format:** Question text, 3-5 distinct options (each with a label and brief description), and a boolean `allow_multiple` flag.
-- **Logic:** `allow_multiple: true` for features/platforms; `false` for primary goals.
+## small_talk
+Greetings, compliments, conversational filler, or meta-questions about Blueprint itself.
+- Examples: "Hi", "Good morning", "How are you?", "What can you do?", "Thanks!"
+- Response: A polite, brief reply (<15 words) that gently steers toward product research.
 
-## 3. Quick Response
-- If `intent_type` is `build`, `explore`, or `improve`: Set to null.
-- If `small_talk`: A polite, brief conversational reply (<15 words).
-- If `off_topic`: A polite refusal (<20 words) explaining that you only help with product research and strategy (not code generation or general tasks).
+## off_topic
+Anything unrelated to product strategy and market research.
+- Code requests: "Write Python code for...", "Debug my React component", "How do I install Node.js?"
+- Academic/general knowledge: "What is the capital of France?", "Solve this equation", "Write a poem"
+- Response: A polite refusal (<20 words) explaining you only help with product research and strategy.
 
-# Output Schema
-You must output strictly valid JSON. Do not include markdown formatting (like ```json).
+## Disambiguation Rules
+When the input is ambiguous:
+- Bare product name (e.g., "Notion") → explore (assume the user wants to learn about it)
+- "I want to build something like X" → build (even though X exists, the user is building something new)
+- Very vague input (e.g., "apps", "ideas", "software") → explore with broad domain, and use clarification questions to narrow
+- Multi-intent (e.g., "Build a Notion competitor and tell me about the market") → build (the primary action is building; exploration is a sub-task of the build pipeline)
+
+
+# Domain Extraction
+
+For build, explore, or improve intents, extract the business/research domain.
+
+Rules:
+- Map the input to a specific domain label. Be specific — "note-taking" not "productivity", "dating" not "social".
+- If the input names a specific product, map to its category (e.g., "Tinder" → "Dating", "Notion" → "Note-taking & Productivity").
+- For small_talk and off_topic: set domain to null.
+- You are NOT limited to the reference list below. If the input describes a domain not listed, create an appropriate label.
+
+Reference hierarchy (use as guidance, not as an exhaustive list):
+
+**Commerce & Retail:** mCommerce, Multi-Vendor Marketplaces, Social Commerce, Re-commerce, DTC
+**On-Demand & Gig Economy:** Food Delivery, Ride-Hailing, Grocery Delivery, Home Services
+**FinTech:** Neobanking, P2P Payments, Investment & Trading, Personal Finance, InsurTech
+**Health & Wellness:** Telehealth, Fitness & Training, Mental Health, FemTech, Nutrition
+**Education (EdTech):** Language Learning, Skill Development, K-12 Support, Test Prep, Cohort-based Courses
+**Travel & Hospitality:** Booking Aggregators, Home Sharing, Travel Planning, Experience Booking
+**Entertainment & Media:** Video Streaming, Audio Streaming, Dating, Social Networking, Gaming
+**Real Estate (PropTech):** Listing Platforms, Rental/Roommate Finders, Property Management
+**Lifestyle & Niche:** Pet Services, Astrology, Recipe & Cooking, Fashion Styling
+**Productivity & Tools:** Note-taking, Project Management, CRM, Communication, Design Tools
+**Developer Tools:** CI/CD, Monitoring, APIs, Low-code/No-code
+
+
+# Clarification Questions
+
+Generate clarification questions ONLY when intent is build, explore, or improve. For small_talk and off_topic, set clarification_questions to null.
+
+## Question Design Principles
+
+1. **Purpose**: Each question must narrow the research space in a way that changes which competitors are found and how they're analyzed. Don't ask questions whose answers wouldn't alter the research.
+2. **Mutual exclusivity of options**: Options within a question should represent meaningfully different directions — not synonyms or overlapping concepts.
+3. **Descriptions are mandatory**: Every option MUST have a non-empty description (1 short sentence) that helps the user understand what choosing it means for the research.
+4. **Stable IDs**: Each question and each option must have a unique, lowercase, hyphenated slug ID (e.g., "target-platform", "mobile", "power-users"). These are used for tracking — never use generic IDs like "q1" or "option1".
+
+## Question Count and Option Count
+- Generate 2-4 questions (prefer 3 for build, 2 for explore).
+- Each question has 3-5 options.
+
+## allow_multiple Rules
+- true: When the user could reasonably want multiple (e.g., platforms, feature categories, content types)
+- false: When the question asks for a primary direction or positioning (e.g., "closest to your vision?", "primary audience?", "main goal?")
+
+## Required Dimensions by Intent
+
+### For "build" intent — generate questions covering THESE dimensions (in order):
+
+1. **Target Platform** (allow_multiple: true)
+   What platform(s) will this be built for?
+   Options: Mobile, Desktop, Web, Cross-platform, Browser Extension, etc.
+
+2. **Target Audience** (allow_multiple: false)
+   Who is the primary user?
+   Options should be personas relevant to the domain (e.g., for note-taking: "Students", "Knowledge workers", "Creative professionals", "Teams & collaboration")
+
+3. **[ Third dimension — domain-specific]** (allow_multiple: varies)
+   This should be the dimension that most differentiates products in the domain. Some examples are below
+   For note-taking: "Content type" (Text, Audio, Visual, All-in-one)
+   For fintech: "Financial product type" (Savings, Lending, Investing, Payments)
+   For fitness: "Activity type" (Running, Gym, Yoga, Team Sports)
+   For entertainment: "Content type" (Movie, Songs, Books, Games)
+
+4. **Positioning / Vision** (allow_multiple: false) — optional, include only when relevant
+   "Which best describes your vision?"
+   Options: Simple & fast, Power tool, All-in-one workspace, Specialized/niche, etc.
+
+### For "explore" intent — generate questions covering THESE dimensions:
+
+1. **Sub-segment** (allow_multiple: false)
+   Narrow the broad domain into a specific niche.
+   For "edtech in India": K-12, Test Prep, Professional Upskilling, Language Learning
+   For "fintech": Neobanking, Payments, Investing, Insurance
+
+2. **Research Focus** (allow_multiple: true)
+   What aspects matter most?
+   Options: Pricing models, User experience, Market size, Growth trends, Technical architecture
+
+### For "improve" intent:
+Use the same dimensions as "explore" but add:
+- **Improvement Goal** (allow_multiple: true): "What do you want to improve?" → UX, Pricing, Feature set, Market positioning, Growth strategy
+After this, follow the flow of Build intent with the given improvement goal as context
+
+# Quick Response
+
+- For build, explore, improve: set quick_response to null.
+- For small_talk: Generate a brief, warm, one-sentence reply (<15 words) that acknowledges the greeting and steers toward product research. Vary it — don't always say the same thing.
+- For off_topic: Generate a brief, polite refusal (<20 words) that explains your scope is product research and strategy, not [whatever they asked about].
+
+# Output Format
+
+Return ONLY a single JSON object. No markdown code fences. No explanatory text. No trailing commas.
 
 {
-  "intent_type": "string",
+  "intent_type": "build" | "explore" | "improve" | "small_talk" | "off_topic",
   "domain": "string or null",
   "clarification_questions": [
     {
-      "id": "string",
-      "text": "string",
+      "id": "question-slug",
+      "text": "The question text displayed to the user",
       "options": [
-        { "label": "string", "description": "string" }
+        {
+          "id": "option-slug",
+          "label": "Display Label",
+          "description": "One sentence explaining what this option means for the research"
+        }
       ],
-      "allow_multiple": boolean
+      "allow_multiple": true | false
+    }
+  ] | null,
+  "quick_response": "string or null"
+}
+
+# Examples
+
+## Example 1: build intent
+Input: "I want to build a note-taking app"
+Output:
+{
+  "intent_type": "build",
+  "domain": "Note-taking",
+  "clarification_questions": [
+    {
+      "id": "target-platform",
+      "text": "What platform are you targeting?",
+      "options": [
+        {"id": "mobile", "label": "Mobile", "description": "Native iOS/Android app, optimized for on-the-go capture"},
+        {"id": "desktop", "label": "Desktop", "description": "Native Mac/Windows app with full keyboard-driven workflows"},
+        {"id": "web", "label": "Web", "description": "Browser-based, accessible from any device"},
+        {"id": "cross-platform", "label": "Cross-platform", "description": "Available everywhere with sync across devices"}
+      ],
+      "allow_multiple": true
+    },
+    {
+      "id": "target-audience",
+      "text": "Who is your primary user?",
+      "options": [
+        {"id": "students", "label": "Students", "description": "Lecture notes, study organization, academic research"},
+        {"id": "knowledge-workers", "label": "Knowledge Workers", "description": "Professionals managing ideas, meeting notes, and projects"},
+        {"id": "creative-professionals", "label": "Creative Professionals", "description": "Writers, designers, and creators organizing inspiration"},
+        {"id": "teams", "label": "Teams & Collaboration", "description": "Shared workspaces for team knowledge management"}
+      ],
+      "allow_multiple": false
+    },
+    {
+      "id": "content-type",
+      "text": "What type of content will users primarily work with?",
+      "options": [
+        {"id": "text-notes", "label": "Text Notes", "description": "Rich text, markdown, and structured documents"},
+        {"id": "audio-notes", "label": "Audio & Voice", "description": "Voice memos, transcription, and audio-first capture"},
+        {"id": "visual-notes", "label": "Visual & Spatial", "description": "Diagrams, whiteboards, mind maps, and spatial canvases"},
+        {"id": "all-in-one", "label": "All-in-One", "description": "Mixed media combining text, audio, images, and embeds"}
+      ],
+      "allow_multiple": true
+    },
+    {
+      "id": "positioning",
+      "text": "Which best describes your vision?",
+      "options": [
+        {"id": "simple-fast", "label": "Simple & Fast", "description": "Minimal, distraction-free, opens and captures instantly"},
+        {"id": "power-tool", "label": "Power Tool", "description": "Deep features like backlinks, graph views, and plugins"},
+        {"id": "all-in-one-workspace", "label": "All-in-One Workspace", "description": "Notes + tasks + databases + wiki in one app"},
+        {"id": "specialized-niche", "label": "Specialized / Niche", "description": "Purpose-built for a specific use case or audience"}
+      ],
+      "allow_multiple": false
     }
   ],
-  "quick_response": "string or null"
+  "quick_response": null
+}
+
+## Example 2: explore intent
+Input: "Tell me about edtech in India"
+Output:
+{
+  "intent_type": "explore",
+  "domain": "EdTech (India)",
+  "clarification_questions": [
+    {
+      "id": "edtech-segment",
+      "text": "Which area of Indian EdTech interests you most?",
+      "options": [
+        {"id": "k12", "label": "K-12 Education", "description": "School-age learning platforms and tutoring services"},
+        {"id": "test-prep", "label": "Test Preparation", "description": "Competitive exam prep (JEE, NEET, UPSC, CAT)"},
+        {"id": "upskilling", "label": "Professional Upskilling", "description": "Career development, coding bootcamps, certifications"},
+        {"id": "language-learning", "label": "Language Learning", "description": "English and regional language learning platforms"}
+      ],
+      "allow_multiple": false
+    },
+    {
+      "id": "research-focus",
+      "text": "What aspects do you want to understand?",
+      "options": [
+        {"id": "competitive-landscape", "label": "Competitive Landscape", "description": "Who are the major players and how do they compare?"},
+        {"id": "business-models", "label": "Business Models", "description": "How do these companies monetize and price their products?"},
+        {"id": "user-experience", "label": "User Experience", "description": "What do users love and hate about existing products?"},
+        {"id": "market-trends", "label": "Market Trends", "description": "Growth trajectories, funding, and emerging opportunities"}
+      ],
+      "allow_multiple": true
+    }
+  ],
+  "quick_response": null
+}
+
+## Example 3: small_talk
+Input: "How are you?"
+Output:
+{
+  "intent_type": "small_talk",
+  "domain": null,
+  "clarification_questions": null,
+  "quick_response": "I'm Blueprint, your product research assistant. What would you like to explore?"
+}
+
+## Example 4: off_topic
+Input: "Write Python code for Fibonacci"
+Output:
+{
+  "intent_type": "off_topic",
+  "domain": null,
+  "clarification_questions": null,
+  "quick_response": "I focus on product strategy and market research — try a coding assistant for that!"
+}
+
+## Example 5: bare product name
+Input: "Notion"
+Output:
+{
+  "intent_type": "explore",
+  "domain": "Note-taking & Productivity",
+  "clarification_questions": [
+    {
+      "id": "explore-angle",
+      "text": "What about Notion are you interested in?",
+      "options": [
+        {"id": "competitor-landscape", "label": "Competitors & Alternatives", "description": "Who competes with Notion and how do they differ?"},
+        {"id": "product-deep-dive", "label": "Product Deep Dive", "description": "Features, pricing, strengths, and weaknesses"},
+        {"id": "market-position", "label": "Market Position", "description": "Where does Notion sit in the broader productivity market?"},
+        {"id": "user-sentiment", "label": "User Sentiment", "description": "What do real users say on Reddit and review sites?"}
+      ],
+      "allow_multiple": false
+    }
+  ],
+  "quick_response": null
 }
 """
     return [{"role": "user", "content": CLASSIFY_PROMPT + f"\n\nUser input: \"{user_input}\""}]
@@ -1379,13 +1669,26 @@ def build_market_overview_prompt(domain: str, competitors: list[dict]) -> list[d
     """
 
 
-def build_gap_analysis_prompt(profiles: list[dict], clarification_context: dict) -> list[dict]:
+def build_gap_analysis_prompt(
+    domain: str,
+    profiles: list[dict],
+    clarification_context: dict,
+    market_overview: dict | None = None,
+) -> list[dict]:
     """
     Build prompt to identify market gaps from competitor profiles (build intent only).
 
     Input:
-        profiles: List of ProductProfile dicts (all analyzed competitors)
+        domain: The research domain (e.g., "note-taking")
+        profiles: List of ProductProfile dicts (all analyzed competitors).
+            Each profile contains: name, features_summary, pricing_tiers,
+            target_audience, strengths, weaknesses, reddit_sentiment, sources.
+            NOTE: reddit_sentiment is already a summary of user reviews/sentiment
+            extracted during the explore step — the LLM does NOT need to fetch or
+            generate review data. It should use what's in the profiles as-is.
         clarification_context: The user's clarification answers (platform, audience, etc.)
+        market_overview: Optional MarketOverview dict (title, content, sources) —
+            provides high-level market context generated during the explore step.
 
     Instructions to LLM:
         - Analyze all competitor profiles for underserved/unserved needs
@@ -1394,12 +1697,172 @@ def build_gap_analysis_prompt(profiles: list[dict], clarification_context: dict)
         - Generate a slug ID for each gap
         - Prioritize gaps relevant to the user's stated preferences
         - Ground all gaps in evidence from the competitor data (no fabrication)
+        - Use reddit_sentiment from profiles as the source of user sentiment — do not
+          assume or invent customer feedback beyond what's provided
 
     Expected output schema: GapAnalysis
 
     Returns:
         [{"role": "user", "content": "..."}]
     """
+    # ── ACTUAL PROMPT TEXT (founder-authored) ──────────────────────────
+    #
+    # Note: The persona system prompt is prepended by llm.py — not included here.
+    # This prompt focuses purely on gap identification from provided data.
+    #
+    GAP_ANALYSIS_PROMPT = """
+# Role
+You are the "Gap Analyst" module for Blueprint, a product research tool. You receive detailed competitor profiles, a market overview, and the user's stated preferences. Your job is to identify market gaps — underserved needs, unserved segments, and recurring pain points that represent opportunities for a new product.
+
+You output a single JSON object. Nothing else — no markdown, no explanation, no text before or after the JSON.
+
+# Inputs You Will Receive
+
+1. **Domain**: The product/market domain (e.g., "Note-taking", "Dating", "EdTech").
+2. **Competitor Profiles**: Structured data for each analyzed product, including:
+   - name, features_summary, pricing_tiers, target_audience
+   - strengths, weaknesses
+   - reddit_sentiment (a pre-summarized digest of real user reviews and Reddit discussions — treat this as ground truth for user sentiment, do NOT fabricate additional user feedback)
+   - sources (URLs)
+3. **Market Overview**: A high-level summary of the market landscape, trends, and competitive dynamics (may be absent — if so, rely on the profiles alone).
+4. **User Context**: The user's clarification answers describing what they want to build (platform, audience, positioning, etc.).
+
+# Task
+
+Analyze ALL competitor profiles holistically — look across them, not at each one individually — and identify 3-6 market gaps.
+
+# What Counts as a Gap
+
+A gap must satisfy ALL of these criteria:
+
+1. **Evidence-backed**: Supported by specific data from the provided profiles — a weakness, a missing feature, a complaint from reddit_sentiment, a pricing model that excludes a segment, etc. If you cannot point to evidence from the inputs, it is NOT a gap.
+2. **Relevant to user context**: Prioritize gaps that align with the user's stated platform, audience, and positioning preferences. A gap in "enterprise collaboration" is irrelevant if the user is targeting "individual students on mobile."
+3. **Actionable**: The gap should suggest a concrete product direction. "There's room for improvement" is not a gap. "No tool offers offline-first sync without a separate paid service" is a gap.
+4. **Not already well-served**: If 2+ competitors already address this need well (per their strengths), it's a competitive space, not a gap.
+
+# Where to Look for Gaps
+
+Analyze the profiles along these dimensions (not every dimension will have a gap — only report what the evidence supports):
+
+1. **Feature gaps**: Capabilities users need but no product provides well. Look at weaknesses and reddit_sentiment across profiles for recurring complaints.
+2. **Audience gaps**: User segments that existing products ignore or underserve. Compare target_audience fields — who is NOT being targeted?
+3. **Platform gaps**: Platforms where existing products have a weak or absent presence. Cross-reference with the user's target platform.
+4. **Pricing gaps**: Price points or models that leave segments unserved. Are all products premium? Is there no good free tier? No affordable mid-tier?
+5. **Experience gaps**: UX or workflow problems cited in reddit_sentiment or weaknesses that multiple competitors share.
+
+# Opportunity Size Scoring
+
+Rate each gap as:
+- **high**: Multiple competitors share this weakness + directly aligns with user's preferences + reddit_sentiment confirms user frustration + commercially viable.
+- **medium**: Supported by evidence from 1-2 competitors + somewhat relevant to user context + some demand signals.
+- **low**: Based on a single competitor's weakness or a niche observation. Valid but less impactful.
+
+When unsure between two levels, pick the lower one. Do not inflate.
+
+# Quality Rules
+
+- **Be specific in titles.** Bad: "Better mobile experience." Good: "No power tool has a native mobile-first editor with offline support."
+- **Be specific in descriptions.** Explain WHY this is a gap, WHO it affects, and WHAT a solution might look like. 2-4 sentences.
+- **Evidence must be traceable.** Each item in the evidence array must reference a specific competitor by name and a specific observation from their profile (e.g., "Notion: reddit_sentiment — users complain about mobile performance", "Obsidian: pricing — Sync costs $4/mo for a basic feature").
+- **Do not repeat gaps in different words.** If "poor mobile" and "no offline on mobile" are really the same issue, merge them.
+- **Do not fabricate evidence.** Only cite information present in the provided profiles and market overview. If a profile says nothing about mobile, you cannot claim the product has a bad mobile experience.
+- **Do not restate strengths as gaps.** If a strength is shared, it's not a gap — it's table stakes.
+- **Order by opportunity_size descending.** High gaps first.
+
+# Output Format
+
+Return ONLY a single JSON object. No markdown code fences. No explanatory text. No trailing commas.
+
+{
+  "title": "Market Gaps & Opportunities",
+  "problems": [
+    {
+      "id": "gap-[lowercase-slug]",
+      "title": "Concise, specific gap title",
+      "description": "2-4 sentences: why this is a gap, who it affects, what a solution looks like.",
+      "evidence": [
+        "CompetitorName: field_name — specific observation from their profile",
+        "CompetitorName: field_name — another specific observation"
+      ],
+      "opportunity_size": "high" | "medium" | "low"
+    }
+  ],
+  "sources": ["URLs from profiles that directly support the gap analysis"]
+}
+
+# Constraints
+- Output 3-6 problems. Prefer 4-5.
+- Every problem MUST have at least 2 items in evidence.
+- Every evidence item MUST reference a specific competitor by name.
+- IDs must be unique slugs prefixed with "gap-" (e.g., "gap-mobile-first", "gap-pricing-accessibility").
+- The top-level "sources" array: include only URLs you directly cited or that support your evidence. Do not dump all profile URLs.
+- Do NOT include gaps already well-addressed by 2+ competitors.
+
+# Example
+
+Given profiles for Notion and Obsidian (note-taking domain), user wants to build a mobile-first power tool:
+
+{
+  "title": "Market Gaps & Opportunities",
+  "problems": [
+    {
+      "id": "gap-mobile-first-power-tool",
+      "title": "No power note-taking tool is designed mobile-first",
+      "description": "Both Notion and Obsidian treat mobile as a secondary platform. Notion's mobile app is a stripped-down version of desktop, and Obsidian's mobile app has limited plugin support. Users who primarily work on phones have no power-tool option — they must choose between simple mobile apps or degraded desktop-first experiences.",
+      "evidence": [
+        "Notion: weaknesses — 'Can be slow with large workspaces', especially on mobile",
+        "Notion: reddit_sentiment — 'Users love flexibility but complain about performance'",
+        "Obsidian: weaknesses — 'Mobile app less polished'",
+        "Obsidian: reddit_sentiment — 'Users complain about sync costs', implying mobile-desktop sync is a pain point"
+      ],
+      "opportunity_size": "high"
+    },
+    {
+      "id": "gap-offline-sync",
+      "title": "Reliable offline-first sync without a separate paid service",
+      "description": "Notion requires internet for most operations. Obsidian is local-first but charges $4/mo for cross-device sync. No tool offers seamless offline with built-in free sync, leaving mobile users and users in low-connectivity areas without a good option.",
+      "evidence": [
+        "Notion: weaknesses — 'Requires internet'",
+        "Obsidian: pricing_tiers — 'Sync $4/mo' is a separate paid add-on for a basic expectation",
+        "Obsidian: reddit_sentiment — 'Users complain about sync costs'"
+      ],
+      "opportunity_size": "high"
+    },
+    {
+      "id": "gap-learning-curve",
+      "title": "Power tools require significant onboarding investment",
+      "description": "Both Notion and Obsidian have steep learning curves. Notion's block system and database views confuse new users. Obsidian requires understanding markdown, file systems, and plugin curation. There's an opportunity for progressive disclosure — simple by default, powerful when needed.",
+      "evidence": [
+        "Notion: weaknesses — 'Steep learning curve'",
+        "Obsidian: weaknesses — 'Plugin quality varies', requiring users to curate their own experience"
+      ],
+      "opportunity_size": "medium"
+    }
+  ],
+  "sources": [
+    "https://notion.so/pricing",
+    "https://obsidian.md",
+    "https://reddit.com/r/Notion/...",
+    "https://reddit.com/r/ObsidianMD/..."
+  ]
+}
+"""
+
+    # ── Build the context sections ────────────────────────────────────
+    import json
+
+    context_parts = [GAP_ANALYSIS_PROMPT]
+
+    context_parts.append(f"\n\n# Domain\n{domain}")
+
+    context_parts.append(f"\n\n# User Context (Clarification Answers)\n{json.dumps(clarification_context, indent=2)}")
+
+    if market_overview:
+        context_parts.append(f"\n\n# Market Overview\n{json.dumps(market_overview, indent=2)}")
+
+    context_parts.append(f"\n\n# Competitor Profiles\n{json.dumps(profiles, indent=2)}")
+
+    return [{"role": "user", "content": "".join(context_parts)}]
 
 
 def build_problem_statement_prompt(selected_gaps: list[dict], context: dict) -> list[dict]:
@@ -1408,19 +1871,136 @@ def build_problem_statement_prompt(selected_gaps: list[dict], context: dict) -> 
 
     Input:
         selected_gaps: List of ProblemArea dicts the user selected
-        context: Dict with domain, competitors_analyzed, clarification_context
-
-    Instructions to LLM:
-        - Synthesize the selected gaps into a focused, actionable problem statement
-        - Include: target user, key differentiators, validation questions
-        - The statement should be specific enough to guide a product brief
-        - Ground the statement in the research context
+            Each has: id, title, description, evidence, opportunity_size
+        context: Dict with:
+            - domain: str (e.g., "note-taking")
+            - competitors_analyzed: list[str] (e.g., ["Notion", "Obsidian"])
+            - clarification_context: dict (user's answers — platform, audience, etc.)
 
     Expected output schema: ProblemStatement
 
     Returns:
         [{"role": "user", "content": "..."}]
     """
+    # ── ACTUAL PROMPT TEXT (founder-authored) ──────────────────────────
+    #
+    # Note: The persona system prompt is prepended by llm.py — not included here.
+    # This prompt synthesizes user-selected gaps into an actionable problem statement.
+    #
+    PROBLEM_STATEMENT_PROMPT = """
+# Role
+You are the "Problem Definer" module for Blueprint, a product research tool. You receive market gaps that the user has chosen to focus on, along with the full research context (domain, competitors analyzed, user preferences). Your job is to synthesize these into a single, focused, actionable problem statement that could guide a product brief.
+
+You output a single JSON object. Nothing else — no markdown, no explanation, no text before or after the JSON.
+
+# Inputs You Will Receive
+
+1. **Selected Gaps**: The specific market gaps the user chose to pursue (each with title, description, evidence, opportunity_size).
+2. **Context**:
+   - domain: The product/market domain
+   - competitors_analyzed: Names of competitors that were profiled
+   - clarification_context: The user's original preferences (platform, audience, positioning, etc.)
+
+# Task
+
+Synthesize all selected gaps into ONE cohesive problem statement. This is not a list of gaps restated — it's a unified thesis about what to build and why.
+
+# What Makes a Good Problem Statement
+
+1. **Specific enough to act on.** "Build a better note-taking app" is useless. "Build a mobile-first power note-taking tool with offline graph navigation for knowledge workers who can't use Obsidian on their phones" is actionable.
+2. **Grounded in the research.** Every claim in the statement should trace back to the gaps and evidence. Don't introduce new market claims not supported by the input data.
+3. **User-centered.** The statement frames the opportunity from the user's perspective — who they are, what they need, why existing solutions fail them.
+4. **Opinionated.** Take a stance on what the product should prioritize. A problem statement that tries to address everything addresses nothing.
+
+# Output Fields
+
+## title
+A short title for the problem statement section. Keep it to "Your Problem Statement" or a brief domain-specific variant (e.g., "Your Note-Taking Product Thesis").
+
+## content
+The core problem statement. This is the most important field. Write it as 2-4 sentences of prose (not bullets). Structure:
+- Sentence 1: WHO is the target user and WHAT is their unmet need?
+- Sentence 2: WHY do existing solutions fail them? (Reference the specific gaps)
+- Sentence 3-4: WHAT should the product do differently? (The opportunity)
+
+Keep it tight — aim for 40-80 words. This should fit on a slide.
+
+## target_user
+A persona description, NOT a demographic. Bad: "Males 25-34 in urban areas." Good: "Power users who want Obsidian-level depth but primarily work on their phones, often in low-connectivity environments."
+
+Be specific about their behavior, context, and pain point. One sentence, 15-30 words.
+
+## key_differentiators
+3-5 product-level differentiators that would set this product apart. These are STRATEGIC bets, not feature specs.
+
+Rules:
+- Each differentiator should be one sentence.
+- Frame as "what makes this different" not "what features it has."
+- Bad: "Has a mobile app." Good: "Mobile-native graph navigation that feels built for phones, not shrunken from desktop."
+- Bad: "Free sync." Good: "Offline-first with built-in peer-to-peer sync at zero cost — no separate subscription."
+- Ground each in the gap evidence. If a differentiator doesn't trace back to a gap, don't include it.
+
+## validation_questions
+3-5 critical questions the founder should answer BEFORE building. These are risks, assumptions, and unknowns that the research surfaced but couldn't resolve.
+
+Rules:
+- Each question should be testable (can be answered with user interviews, prototypes, or market data).
+- Frame around the biggest assumptions in the problem statement.
+- Bad: "Will people like it?" Good: "Would mobile power users switch from Apple Notes if graph features added 2 seconds to note creation?"
+- Bad: "Is the market big enough?" Good: "How many Obsidian users primarily use their phone — is mobile-first a 10K or 10M user opportunity?"
+- Include at least one question about willingness to pay / business model.
+
+# Output Format
+
+Return ONLY a single JSON object. No markdown code fences. No explanatory text. No trailing commas.
+
+{
+  "title": "Your Problem Statement",
+  "content": "2-4 sentence problem statement (40-80 words).",
+  "target_user": "One-sentence persona description (15-30 words).",
+  "key_differentiators": [
+    "Strategic differentiator 1",
+    "Strategic differentiator 2",
+    "Strategic differentiator 3"
+  ],
+  "validation_questions": [
+    "Critical question 1?",
+    "Critical question 2?",
+    "Critical question 3?"
+  ]
+}
+
+# Example
+
+Selected gaps: "No mobile-first power tool" (high) + "Offline sync requires paid service" (high)
+Context: domain = "note-taking", competitors = ["Notion", "Obsidian"], user wants mobile + web, power tool, text notes.
+
+{
+  "title": "Your Problem Statement",
+  "content": "Power note-taking users who work primarily on mobile have no real option — Notion is sluggish on phones and Obsidian's mobile app is a second-class citizen. Build a mobile-native knowledge tool that delivers graph-based navigation and backlinks designed for touch, with offline-first sync that works without a paid add-on.",
+  "target_user": "Knowledge workers and researchers who want Obsidian-level depth but primarily capture and organize ideas on their phones.",
+  "key_differentiators": [
+    "Mobile-native graph navigation designed for touch — not a shrunken desktop view",
+    "Offline-first architecture with free peer-to-peer sync across devices",
+    "Markdown-compatible editor with mobile-optimized input (voice-to-text, swipe shortcuts)",
+    "Progressive complexity — simple capture by default, power features discoverable on demand"
+  ],
+  "validation_questions": [
+    "Would mobile power users switch from Apple Notes or Keep if graph features added 2 seconds to note creation?",
+    "Can peer-to-peer sync deliver Obsidian Sync-level reliability at zero marginal cost?",
+    "Is 'mobile-first power tool' a viable wedge, or do power users inherently prefer desktop for deep work?",
+    "What's the willingness to pay for a mobile note tool — can this sustain a freemium model, or does it need to be fully free to compete?"
+  ]
+}
+"""
+
+    import json
+
+    context_parts = [PROBLEM_STATEMENT_PROMPT]
+    context_parts.append(f"\n\n# Selected Gaps\n{json.dumps(selected_gaps, indent=2)}")
+    context_parts.append(f"\n\n# Research Context\n{json.dumps(context, indent=2)}")
+
+    return [{"role": "user", "content": "".join(context_parts)}]
 
 
 def build_fix_json_prompt(broken_output: str, expected_schema: dict) -> list[dict]:
@@ -1439,6 +2019,57 @@ def build_fix_json_prompt(broken_output: str, expected_schema: dict) -> list[dic
     Returns:
         [{"role": "user", "content": "..."}]
     """
+
+
+# ──────────────────────────────────────────────────────
+# Quick Response Templates (hardcoded — no LLM call needed)
+# ──────────────────────────────────────────────────────
+# These are used by the classify pipeline when intent is small_talk or off_topic.
+# The classify prompt still generates quick_response via the LLM, but these templates
+# serve as fallbacks if the LLM response is missing or malformed, and can replace
+# the LLM-generated responses entirely for cost/speed if desired.
+#
+# Usage in api/research.py:
+#   If classify_result.quick_response is None or empty, pick a random template.
+#   Or: always use these templates and skip the LLM-generated quick_response.
+
+import random
+
+SMALL_TALK_RESPONSES = [
+    "Hey! I'm Blueprint, your product research assistant. What would you like to build or explore?",
+    "Hello! I help with product strategy and market research. What's on your mind?",
+    "Hi there! Tell me what product or market you'd like to research.",
+    "I'm Blueprint — here to help you explore markets and find opportunities. What are you working on?",
+    "Thanks! I'm ready when you are. What product space would you like to explore?",
+    "Good to see you! Describe a product idea or market you want to research.",
+]
+
+OFF_TOPIC_RESPONSES = [
+    "I focus on product strategy and market research — I can't help with that, but I'd love to help you explore a product idea!",
+    "That's outside my scope — I'm built for competitive analysis and product research. What market would you like to explore?",
+    "I specialize in product and market research. Try me with a product idea or industry you're curious about!",
+    "I can't help with that, but I'm great at competitor research and market analysis. What would you like to build?",
+]
+
+
+def get_quick_response(intent_type: str) -> str:
+    """
+    Return a hardcoded quick response for small_talk or off_topic intents.
+
+    Used as a fallback when the LLM's quick_response is missing/empty,
+    or as a replacement to skip the LLM-generated response entirely.
+
+    Args:
+        intent_type: "small_talk" or "off_topic"
+
+    Returns:
+        A friendly, brief response string.
+    """
+    if intent_type == "small_talk":
+        return random.choice(SMALL_TALK_RESPONSES)
+    elif intent_type == "off_topic":
+        return random.choice(OFF_TOPIC_RESPONSES)
+    return ""
 ```
 
 **Notes**:
@@ -1446,6 +2077,8 @@ def build_fix_json_prompt(broken_output: str, expected_schema: dict) -> list[dic
 - Prompts use concrete examples where possible to improve LLM output quality.
 - The `build_fix_json_prompt` is called by `llm.call_llm_structured()` when the first attempt fails validation.
 - `build_classify_prompt` is the most complex prompt — it must handle all 5 intent types and generate appropriate clarification questions. The founder writes the actual text; the coding agent wires the schema and function.
+- Quick response templates are hardcoded for speed and cost — no LLM call needed for small_talk/off_topic. The `get_quick_response()` function can be used as a fallback or full replacement for the LLM-generated `quick_response` field.
+- The classify prompt still instructs the LLM to generate quick_response (useful for varied/contextual responses), but the hardcoded templates guarantee a response even if the LLM output is malformed.
 
 ---
 
@@ -1590,8 +2223,8 @@ async def _run_competitor_pipeline(journey_id: str, clarification_context: dict,
         1. Check alternatives_cache DB (instant, free)
         2. Fan out to live sources in parallel:
             a. App Store + Play Store search (V0-EXPERIMENTAL)
-            b. Serper web search
-            c. Serper Reddit site-search
+            b. Tavily/Serper web search
+            c. Tavily/Serper Reddit site-search
         3. Merge all results and pass to LLM (synthesize + augment from own knowledge)
 
     Steps:
@@ -1620,7 +2253,13 @@ async def _run_competitor_pipeline(journey_id: str, clarification_context: dict,
     """
 
 
-async def _run_explore_pipeline(journey_id: str, selected_competitors: list[dict], intent_type: str):
+async def _run_explore_pipeline(
+    journey_id: str,
+    selected_competitors: list[dict],
+    intent_type: str,
+    domain: str,
+    clarification_context: dict,
+):
     """
     Generator that yields SSE events for the explore phase.
     Called after user selects competitors to explore.
@@ -1642,7 +2281,8 @@ async def _run_explore_pipeline(journey_id: str, selected_competitors: list[dict
             b. Yield block_ready(market_overview)
         5. Yield step_completed("exploring")
         6. If intent_type == "build":
-            a. Run _run_gap_analysis() inline
+            a. Run _run_gap_analysis(journey_id, domain, profiles,
+                   clarification_context, market_overview) inline
             b. Yield waiting_for_selection("problems")
             c. Return (stream ends, user selects problems)
         7. If intent_type == "explore":
@@ -1660,14 +2300,22 @@ async def _run_explore_pipeline(journey_id: str, selected_competitors: list[dict
     """
 
 
-async def _run_gap_analysis(journey_id: str, profiles: list[dict], clarification_context: dict):
+async def _run_gap_analysis(
+    journey_id: str,
+    domain: str,
+    profiles: list[dict],
+    clarification_context: dict,
+    market_overview: dict | None = None,
+):
     """
     Yields SSE events for gap analysis (build intent only).
     Called inline by _run_explore_pipeline when intent is "build".
 
     Steps:
         1. Yield step_started("gap_analyzing")
-        2. Call llm.call_llm_structured() with build_gap_analysis_prompt()
+        2. Call llm.call_llm_structured() with build_gap_analysis_prompt(
+               domain, profiles, clarification_context, market_overview
+           )
         3. Build block_ready event with gap_analysis block
         4. Save explore step to DB (includes gap_analysis in output_data)
         5. Yield block_ready(gap_analysis)
@@ -1847,11 +2495,38 @@ app.add_middleware(
 # Rate: "20/minute"
 ```
 
+### Request ID Logging Middleware
+
+```python
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from app.config import log
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Log the X-Request-Id header from every incoming request.
+
+    The frontend includes X-Request-Id on every fetch call.
+    This middleware logs it so REST errors can be correlated with backend logs.
+    """
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-Id", "none")
+        log("INFO", "request received",
+            method=request.method,
+            path=request.url.path,
+            request_id=request_id)
+        response = await call_next(request)
+        return response
+
+# Add in create_app():
+# app.add_middleware(RequestIdMiddleware)
+```
+
 **Notes**:
 - The app is created via `create_app()` factory pattern, but the `app` variable is module-level for uvicorn: `uvicorn app.main:app`.
 - CORS origins: `http://localhost:3000` in development, Railway frontend domain in production.
 - Rate limiting is applied only to `POST /api/research` and `POST /api/research/{id}/selection` — the expensive endpoints. GET endpoints are not rate limited.
 - The `__init__.py` files in `app/` and `app/api/` can be empty.
+- `RequestIdMiddleware` logs the `X-Request-Id` header from the frontend on every request. Add it in `create_app()` after CORS middleware.
 
 ---
 
@@ -1926,6 +2601,7 @@ export interface BlockErrorEvent {
   type: "block_error";
   block_name: string;
   error: string;
+  error_code: string;       // User-facing ref code, e.g., "BP-3F8A2C"
 }
 
 export interface ClarificationNeededEvent {
@@ -1948,6 +2624,7 @@ export interface ErrorEvent {
   type: "error";
   message: string;
   recoverable: boolean;
+  error_code: string;       // User-facing ref code, e.g., "BP-3F8A2C"
 }
 
 // ──────────────────────────────────────────────────────
@@ -1958,7 +2635,14 @@ export interface ResearchBlock {
   id: string;
   type: BlockType;
   title: string;
-  content: string;        // Markdown-formatted
+  content: string;        // Markdown-formatted (for display)
+  output_data?: Record<string, unknown>;  // Typed structured data (for programmatic use)
+  // output_data shape depends on block type:
+  //   competitor_list:    { competitors: CompetitorInfo[] }
+  //   gap_analysis:       { problems: ProblemArea[] }
+  //   product_profile:    { profile: ProductProfile }
+  //   problem_statement:  { statement: ProblemStatement }
+  //   market_overview:    { overview: MarketOverview }
   sources: string[];
   cached: boolean;
   cached_at?: string;     // ISO date string
@@ -1972,7 +2656,8 @@ export interface ClarificationQuestion {
 }
 
 export interface ClarificationOption {
-  label: string;
+  id: string;             // Stable slug ID, e.g., "mobile", "web", "text-notes"
+  label: string;          // Display label
   description: string;
 }
 
@@ -2047,7 +2732,7 @@ export interface ResearchRequest {
 
 export interface ClarificationAnswer {
   question_id: string;
-  selected_options: string[];   // Label strings, e.g., ["Mobile", "Web"]
+  selected_option_ids: string[];   // Option ID slugs, e.g., ["mobile", "web"]
 }
 
 export interface ClarificationSelection {
@@ -2097,7 +2782,7 @@ export interface ResearchState {
   quickResponse: string | null;    // For small_talk/off_topic (no journey)
 }
 
-// Problem area from gap analysis (extracted from gap_analysis block content)
+// Problem area from gap analysis (extracted from gap_analysis block's output_data.problems)
 export interface ProblemArea {
   id: string;
   title: string;
@@ -2124,6 +2809,15 @@ export interface ProblemArea {
 
 ```typescript
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Generate a request correlation ID for REST calls.
+ * Included as X-Request-Id header so backend logs can be matched to frontend errors.
+ * Format matches the backend error_code pattern for consistency.
+ */
+function generateRequestId(): string {
+  return `BP-${crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
 ```
 
 ### REST API Functions
@@ -2143,9 +2837,13 @@ export async function getJourneys(): Promise<JourneyListResponse> {
    *
    * Fetches all journeys for the dashboard.
    * Throws on non-200 response.
+   * Includes X-Request-Id header for request correlation.
    */
-  const res = await fetch(`${API_URL}/api/journeys`);
-  if (!res.ok) throw new Error(`Failed to fetch journeys: ${res.status}`);
+  const requestId = generateRequestId();
+  const res = await fetch(`${API_URL}/api/journeys`, {
+    headers: { "X-Request-Id": requestId },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch journeys (Ref: ${requestId})`);
   return res.json();
 }
 
@@ -2157,9 +2855,13 @@ export async function getJourney(journeyId: string): Promise<JourneyDetailRespon
    * Fetches a single journey with all steps.
    * Used when loading a saved journey from the dashboard.
    * Throws on non-200 response.
+   * Includes X-Request-Id header for request correlation.
    */
-  const res = await fetch(`${API_URL}/api/journeys/${journeyId}`);
-  if (!res.ok) throw new Error(`Failed to fetch journey: ${res.status}`);
+  const requestId = generateRequestId();
+  const res = await fetch(`${API_URL}/api/journeys/${journeyId}`, {
+    headers: { "X-Request-Id": requestId },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch journey (Ref: ${requestId})`);
   return res.json();
 }
 ```
@@ -2190,13 +2892,16 @@ export function startResearch(
    * Starts a new research session and streams SSE events.
    *
    * Implementation:
-   *   1. Use fetch() with POST method (not EventSource — EventSource only supports GET)
-   *   2. Read the response body as a ReadableStream
-   *   3. Use a TextDecoder to read chunks
-   *   4. Parse SSE format: lines starting with "data: " contain JSON events
-   *   5. For each parsed event, call onEvent(event)
-   *   6. On stream end (reader.done), call onComplete()
-   *   7. On error, call onError(error)
+   *   1. Generate a requestId via generateRequestId()
+   *   2. Use fetch() with POST method and headers:
+   *      - "Content-Type": "application/json"
+   *      - "X-Request-Id": requestId
+   *   3. Read the response body as a ReadableStream
+   *   4. Use a TextDecoder to read chunks
+   *   5. Parse SSE format: lines starting with "data: " contain JSON events
+   *   6. For each parsed event, call onEvent(event)
+   *   7. On stream end (reader.done), call onComplete()
+   *   8. On error, call onError(new Error(`Research failed (Ref: ${requestId})`))
    *
    * Returns:
    *   SSEConnection with a close() method to abort the stream (calls AbortController.abort())
@@ -2222,9 +2927,12 @@ export function sendSelection(
    * Same SSE reading logic as startResearch().
    *
    * Implementation:
-   *   1. POST to /api/research/{journeyId}/selection with SelectionRequest body
-   *   2. Read SSE stream from response body
-   *   3. Parse and dispatch events via callbacks
+   *   1. Generate a requestId via generateRequestId()
+   *   2. POST to /api/research/{journeyId}/selection with SelectionRequest body
+   *      Include "X-Request-Id": requestId header
+   *   3. Read SSE stream from response body
+   *   4. Parse and dispatch events via callbacks
+   *   5. On error, include requestId in the error message for correlation
    */
 }
 ```
@@ -2263,6 +2971,8 @@ function parseSSEStream(
 - `AbortController` is used for cancellation — `close()` calls `controller.abort()`.
 - The buffer in `parseSSEStream` handles partial chunks correctly (a single SSE event may be split across multiple network chunks).
 - All callbacks are synchronous — the caller (typically a React hook) updates state synchronously in the callback.
+- **Every fetch call includes an `X-Request-Id` header** (generated by `generateRequestId()`). The backend logs this via FastAPI middleware, so REST errors can be matched to backend logs. For SSE errors, the backend sends `error_code` in the event payload instead.
+- **Error messages shown to users MUST include the ref code** (either `error_code` from SSE events, or the `requestId` from REST calls). Never show raw HTTP status codes or server error text.
 
 ---
 
@@ -2387,6 +3097,8 @@ interface CompetitorSelectorProps {
 }
 ```
 
+**Data source**: Competitors are read from `block.output_data.competitors` (typed `CompetitorInfo[]`), NOT parsed from markdown `block.content`. The parent component extracts this from the `competitor_list` block's `output_data` field and passes it as the `competitors` prop.
+
 **State**: Managed by parent (selectedIds is controlled)
 
 **Behavior**:
@@ -2416,6 +3128,8 @@ interface ProblemSelectorProps {
 }
 ```
 
+**Data source**: Problems are read from `block.output_data.problems` (typed `ProblemArea[]`), NOT parsed from markdown `block.content`. The parent component extracts this from the `gap_analysis` block's `output_data` field and passes it as the `problems` prop.
+
 **State**: Managed by parent (selectedIds is controlled)
 
 **Behavior**:
@@ -2444,7 +3158,7 @@ interface ClarificationPanelProps {
 }
 ```
 
-**State**: `answers: Record<string, string[]>` (questionId → selected optionIds)
+**State**: `answers: Record<string, string[]>` (questionId → selected option IDs as slugs)
 
 **Behavior**:
 - Renders ALL questions vertically with spacing between them
@@ -2586,22 +3300,25 @@ interface SessionCardProps {
 
 ### `components/BlockErrorCard.tsx`
 
-**Purpose**: Inline warning card for a failed research block.
+**Purpose**: Inline warning card for a failed research block. Shows user-friendly error message with a reference code for debugging.
 
 ```typescript
 interface BlockErrorCardProps {
   blockName: string;
   error: string;
-  onRetry: () => void;       // Re-runs the full research pipeline
+  errorCode: string;           // e.g., "BP-3F8A2C" — from BlockErrorEvent.error_code
+  onRetry: () => void;         // Re-runs the full research pipeline
 }
 ```
 
 **Behavior**:
-- Amber/yellow tinted card with warning icon, block name, error message
+- Amber/yellow tinted card with warning icon, block name, user-friendly error message
+- Reference code displayed below the error message in small muted text: `Ref: BP-XXXXXX`
 - "Try again" button (secondary style) — triggers full research re-run
 - Compact layout, same width as research blocks
+- NEVER shows raw error strings, stack traces, provider names, or HTTP status codes
 
-**Styling**: `bg-amber-50`, `border-amber-200`, `text-amber-800` (standard warning palette from Tailwind)
+**Styling**: `bg-amber-50`, `border-amber-200`, `text-amber-800` (standard warning palette from Tailwind). Ref code uses `text-amber-600 text-xs` for subtlety.
 
 ---
 
@@ -2667,42 +3384,59 @@ const inter = Inter({
 
 ### `app/page.tsx` (Landing Page — Screen 1)
 
-**Purpose**: Landing page with centered prompt input. Entry point for new research.
+**Purpose**: Landing page with centered prompt input. Entry point for new research. **Does NOT handle SSE streams.**
 
 ```typescript
 "use client";
 
-// State: prompt string
-// On submit: call startResearch() → navigate to /explore/{journeyId} once journey_started event arrives
+// State: prompt string, isNavigating boolean
+// On submit: navigate to /explore/new?prompt={encodeURIComponent(prompt)}
+// No SSE handling. No AbortController. No stream logic.
 ```
 
 **Layout**:
 - Full-screen `bg-sand` background
-- Centered content: Logo, heading ("What would you like to research?" in Newsreader serif), `<PromptInput />`
-- Below input: row of suggested research pills (clickable chips that pre-fill the prompt)
-- Suggested pills: "Market Analysis", "Competitor Research", "Product Deep Dive", etc.
+- Centered content (vertically and horizontally, max-width ~640px):
+  1. Logo: "B" in black circle (same as sidebar header), small, centered above heading
+  2. Heading: `font-serif` (Newsreader), 28-32px, `text-charcoal`: **"What would you like to build?"**
+  3. Subheading: `font-sans` (Inter), 14-15px, `text-secondary`, max-width ~480px, centered:
+     **"Describe a product idea or market you're curious about. Blueprint will map the competitive landscape, find gaps, and help you define what to build."**
+  4. `<PromptInput />` — full width of container
+     - Placeholder text: **"e.g., I want to build a note-taking app for students..."**
+  5. Suggested research pills (row of clickable chips, wrapping on small screens):
+
+**Suggested Research Pills** (pre-fill the prompt input on click, user edits and clicks RUN):
+
+| Pill Label | Pre-fills prompt with |
+|---|---|
+| "Build a product" | "I want to build a " |
+| "Explore a market" | "Tell me about " |
+| "Competitor deep dive" | "Tell me about [product name]" |
+| "Find my niche" | "I want to build something in the [space] space" |
+
+- Pills use chip styling: `rounded-chip`, `border-border`, `bg-workspace`, hover: `bg-sand`
+- On click: set the prompt input value to the template text, focus the input, place cursor at the placeholder bracket
+- Pills do NOT auto-submit — the user must click RUN
 
 **Navigation**:
-- On `journey_started` event: `router.push(/explore/${journeyId})`
-- The SSE stream continues — the explore page picks it up (via shared state or by reconnecting)
+- On submit: `router.push(/explore/new?prompt=${encodeURIComponent(prompt)})`
+- Set `isNavigating=true` to disable the input during navigation
+- **No SSE stream is started on this page.** The explore page is the single SSE orchestration owner.
 
-**Approach for SSE handoff**: Two options:
-- **Option A**: Start the stream on the landing page, store the stream reference + accumulated events in a context provider, navigate, explore page reads from context.
-- **Option B**: On the landing page, just call `POST /api/research` to create the journey (non-streaming), get the `journey_id` from the response, navigate, then the explore page opens the SSE stream.
-
-**Recommended (Option B simplified)**: The landing page starts the SSE stream. On `journey_started`, navigate to `/explore/{journeyId}`. The explore page re-fetches the journey state from `GET /api/journeys/{id}` and continues listening for new events. If the stream is still running, events continue on the same stream (pass via React context or state management). If the stream ended (waiting_for_selection), the explore page reconstructs state from the saved journey steps.
+**SSE Handoff Decision**: The landing page ONLY collects the prompt and navigates. All SSE streaming is owned exclusively by the explore page. This avoids ambiguous stream ownership across route changes.
 
 ---
 
 ### `app/explore/[journeyId]/page.tsx` (Workspace — Screens 2-6, 9)
 
-**Purpose**: Main two-panel workspace. Renders research blocks, handles SSE events, manages research state.
+**Purpose**: Main two-panel workspace. **Single SSE orchestration owner** — all streaming happens here. Renders research blocks, handles SSE events, manages research state.
 
 ```typescript
 "use client";
 
 // This is the core page of the application.
 // It manages the full ResearchState and orchestrates all interactions.
+// It is the ONLY page that opens SSE streams.
 ```
 
 **State**: `ResearchState` (from `types.ts`) managed via `useReducer`
@@ -2711,23 +3445,33 @@ const inter = Inter({
 - Left: `<Workspace />` (~70% width)
 - Right: `<Sidebar />` (~30% width)
 
-**Data flow**:
-1. On mount: load journey via `getJourney(journeyId)`
-2. Reconstruct `ResearchState` from saved journey steps:
-   - Parse `output_data` of each step to rebuild blocks
-   - Determine current phase from the last step's type and whether it has `user_selection`
-3. If journey status is "active" and last step needs selection: show selection UI
-4. If journey status is "completed": show all blocks, summary, no input
+**Two entry modes**:
+
+1. **New journey** (URL: `/explore/new?prompt=...`):
+   - `journeyId` param is the literal string `"new"`
+   - Read `prompt` from URL search params via `useSearchParams()`
+   - On mount: call `startResearch(prompt)` to open SSE stream 1
+   - On `journey_started` event: replace URL to `/explore/{journeyId}` via `router.replace()` (no navigation, just URL update)
+   - On `quick_response` event: display the message, no URL change needed (no journey was created)
+
+2. **Resume journey** (URL: `/explore/{uuid}`):
+   - `journeyId` param is a real UUID
+   - On mount: call `getJourney(journeyId)` to load saved state
+   - Reconstruct `ResearchState` from saved journey steps:
+     - Parse `output_data` of each step to rebuild blocks
+     - Determine current phase from the last step's type and whether it has `user_selection`
+   - If journey status is "active" and last step needs selection: show selection UI
+   - If journey status is "completed": show all blocks, summary, no input
 
 **SSE handling** (via callbacks from `api.ts`):
 - `onEvent(event)`: dispatch to reducer, update state
 - Reducer handles each event type:
   - `quick_response`: set quickResponse, set phase to "completed" (no journey)
-  - `journey_started`: set journeyId and intentType
+  - `journey_started`: set journeyId and intentType, replace URL via `router.replace()`
   - `intent_redirect`: show info banner
   - `step_started`: set currentStep, add to active steps
   - `step_completed`: add to completedSteps
-  - `block_ready`: append to blocks array. If block.type === "gap_analysis", extract problemAreas from block content.
+  - `block_ready`: append to blocks array. If block.type === "gap_analysis", extract problemAreas from `block.output_data.problems`.
   - `block_error`: append to errors array
   - `clarification_needed`: set questions, set phase to "waiting_for_clarification"
   - `waiting_for_selection`: set phase based on selection_type ("clarification" → "waiting_for_clarification", "competitors" → "waiting_for_competitors", "problems" → "waiting_for_problems")

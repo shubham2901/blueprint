@@ -51,10 +51,11 @@ Blueprint is a two-service monorepo deployed on Railway. The frontend (Next.js) 
                          ┌────▼─────┐            ┌───────▼───────┐    ┌──────▼───────┐
                          │ Supabase │            │ LLM Providers │    │ External APIs│
                          │ (Postgres│            │               │    │              │
-                         │  only,   │            │ - Gemini Flash│    │ - Google CSE │
-                         │  no Auth │            │ - GPT-4o-mini │    │ - DuckDuckGo │
-                         │  in V0)  │            │ - Claude Haiku│    │ - Jina Reader│
-                         └──────────┘            └───────────────┘    └──────────────┘
+                         │  only,   │            │ - Gemini Flash│    │ - Tavily     │
+                         │  no Auth │            │ - GPT-4o-mini │    │ - Serper     │
+                         │  in V0)  │            │ - Claude Haiku│    │ - DuckDuckGo │
+                         └──────────┘            └───────────────┘    │ - Jina Reader│
+                                                                      └──────────────┘
 ```
 
 ### Key Principle: All Data Flows Through Backend
@@ -103,12 +104,18 @@ LLM_CONFIG = {
     "persona": {
         "name": "Blueprint",
         "system_prompt": (
-            "You are Blueprint, a product research assistant. You help product managers "
-            "and founders understand competitive landscapes. Be concise, structured, "
-            "and always cite sources. Use bullet points for features and comparisons. "
-            "Never fabricate data — if unsure, say so."
+            "You are Blueprint, a product and market research assistant for B2C software. "
+            "You help product managers and founders explore competitive landscapes, identify market gaps, "
+            "and define focused problem statements.\n\n"
+            "Guidelines:\n"
+            "- Be concise and structured. Use bullet points for features and comparisons.\n"
+            "- Always cite sources when referencing specific data. If information is unavailable, say so — never fabricate.\n"
+            "- Output strictly valid JSON when instructed. No markdown code fences, no explanation text outside the JSON.\n"
+            "- Stay within your domain: product strategy, market research, and competitive analysis. "
+            "Decline requests for code generation, homework, creative writing, or general knowledge.\n"
+            "- When analyzing products, be balanced — acknowledge both strengths and weaknesses.\n"
+            "- Ground all claims in provided data. Do not speculate beyond what the evidence supports."
         ),
-        "tonality": "professional, direct, structured, no fluff",
     },
     "temperature": 0.3,
     "max_tokens": 2000,
@@ -314,7 +321,7 @@ theme: {
 
 ### ADR-9: Layered Competitor Discovery with AlternativeTo Seeding
 
-**Status**: Accepted
+**Status**: Accepted (Updated: Tavily replaces Serper as primary search)
 
 **Context**: The original design relied on Google Custom Search API (100 free queries/day) to find competitors, with the LLM extracting competitor names from raw search snippets. This was brittle — Google CSE's free tier is severely limited, search snippets don't always contain competitor names, and the LLM had to "guess" competitors from noisy input. G2.com was considered but requires sign-in and has aggressive anti-scraping. A more robust, multi-source approach is needed.
 
@@ -324,27 +331,30 @@ theme: {
 
 2. **Live search (parallel, costs API quota)**:
    - **App/Play Store scrapers** — `google-play-scraper` and `app-store-scraper` Python libraries (no API key needed). The "similar apps" sections are effectively competitor lists. Marked V0-EXPERIMENTAL; deferred to V1 if flaky.
-   - **Serper web search** — structured JSON API (replaces Google CSE). 2,500 queries/month free tier.
-   - **Serper Reddit search** — `site:reddit.com` queries via Serper for community discussions and recommendations.
+   - **Tavily web search** — AI-optimized search API (primary). Returns structured results with extracted content. 1,000 queries/month free tier.
+   - **Serper web search** — structured JSON API (fallback). 2,500 queries/month free tier. Used when Tavily fails.
+   - **Reddit search** — `site:reddit.com` queries via Tavily (primary) or Serper (fallback) for community discussions and recommendations.
 
 3. **LLM synthesis (always runs last)**: The LLM receives data from ALL available sources AND is instructed to augment from its own knowledge. It prioritizes competitors confirmed by multiple sources but MAY include well-known competitors it's confident about.
 
 **Priority logic**: DB first (instant, free) → live search (costs quota) → LLM always last (synthesize + fill gaps).
 
-**DuckDuckGo**: Demoted from co-primary fallback to last-resort emergency fallback. Only used when Serper is completely unavailable (network error, invalid API key).
+**Search provider hierarchy**: Tavily (primary) → Serper (fallback) → DuckDuckGo (last-resort emergency). DuckDuckGo is only used when both Tavily and Serper are completely unavailable (network error, invalid API keys).
 
 **G2**: Dropped entirely. Requires sign-in, has aggressive anti-bot measures, and scraping it reliably is not feasible.
+
+**Google CSE**: Dropped entirely. Replaced by Tavily + Serper.
 
 **Consequences**:
 - Competitor discovery is significantly more robust — multiple data sources reduce single-point-of-failure risk
 - AlternativeTo cache provides instant results for popular products (no search API cost)
 - App store scrapers are experimental and may need to be deferred — pipeline handles empty results gracefully
-- Serper replaces Google CSE everywhere (including regular search and Reddit search)
+- Tavily is the primary search provider; Serper is the first fallback; DuckDuckGo is the last-resort emergency fallback
 - The `alternatives_cache` table adds a new DB table and a one-time seeding step
 
 **Seeding**: Run `python -m app.seed_alternatives` after backend deployment. This is a founder task (see FOUNDER_TASKS.md). The script crawls popular categories on AlternativeTo and stores product-to-alternatives mappings with a 30-day TTL.
 
-**Env var change**: `GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID` replaced by single `SERPER_API_KEY`.
+**Env var change**: `GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID` replaced by `TAVILY_API_KEY` (required) + `SERPER_API_KEY` (recommended fallback).
 
 ---
 
@@ -368,6 +378,8 @@ The research pipeline uses exactly two endpoints:
 - **`POST /api/research/{journey_id}/selection`** — Sends a user's selection (clarification answers, competitor picks, or problem selection). Returns a **new** SSE stream that continues the pipeline from where it paused.
 
 **Critical rule**: SSE is server-to-client only. The frontend NEVER sends data over an SSE connection. User input always goes via a separate POST request. Each SSE stream runs until it needs user input (sends `waiting_for_selection` then closes) or completes (sends `research_complete` then closes).
+
+**SSE ownership**: The landing page (`page.tsx`) does NOT handle SSE streams. It only collects the prompt and navigates to `/explore/new?prompt={encoded}`. The explore page (`explore/[journeyId]/page.tsx`) is the **single SSE orchestration owner** — it opens all streams, processes all events, and manages all research state. This avoids ambiguous stream ownership across route changes.
 
 ### Intent-Based Pipeline Branching
 
@@ -423,9 +435,9 @@ Frontend: POST /api/research/uuid-abc/selection {
     "step_type": "clarify",
     "selection": {
         "answers": [
-            { "question_id": "platform", "selected_options": ["Mobile", "Web"] },
-            { "question_id": "content_type", "selected_options": ["Text notes"] },
-            { "question_id": "positioning", "selected_options": ["Power tool"] }
+            { "question_id": "platform", "selected_option_ids": ["mobile", "web"] },
+            { "question_id": "content_type", "selected_option_ids": ["text-notes"] },
+            { "question_id": "positioning", "selected_option_ids": ["power-tool"] }
         ]
     }
 }
@@ -438,9 +450,9 @@ Backend: loads journey, saves clarify step, runs competitor search
     │   │   └─ If found: add to alternatives_data
     │   ├─ (parallel fan-out via asyncio.gather):
     │   │   ├─ app_stores.py → search_play_store("note taking") + search_app_store("note taking")  [V0-EXPERIMENTAL]
-    │   │   ├─ search.py → Serper web search "mobile web note-taking power tool competitors"
-    │   │   │   └─ On failure: try DuckDuckGo (last-resort)
-    │   │   └─ search.py → search_reddit("note taking app mobile power tool") via Serper
+    │   │   ├─ search.py → Tavily web search "mobile web note-taking power tool competitors"
+    │   │   │   └─ On failure: try Serper → then DuckDuckGo (last-resort)
+    │   │   └─ search.py → search_reddit("note taking app mobile power tool") via Tavily/Serper
     │   ├─ llm.py → synthesize competitor list from all sources + LLM's own knowledge
     │   └─ db.py → save step
     ├─ SSE → { type: "block_ready", block: { type: "competitor_list", ... } }
@@ -488,7 +500,7 @@ Backend: loads journey, begins explore phase
     │   === BUILD INTENT ONLY: Gap Analysis ===
     │
     ├─ SSE → { type: "step_started", step: "gap_analyzing", label: "Finding market gaps" }
-    │   ├─ prompts.py → build_gap_analysis_prompt(all_profiles, clarification_context)
+    │   ├─ prompts.py → build_gap_analysis_prompt(domain, all_profiles, clarification_context, market_overview)
     │   ├─ llm.py → synthesize market gaps from competitor profiles
     │   └─ db.py → save explore step (includes gap_analysis in output_data)
     ├─ SSE → { type: "block_ready", block: { type: "gap_analysis", ... } }
@@ -629,8 +641,8 @@ def build_explore_prompt(product_name: str, scraped_content: str, reddit_content
     """Analyze scraped website + Reddit content into a structured product profile."""
     ...
 
-def build_gap_analysis_prompt(profiles: list[dict], clarification_context: dict) -> list[dict]:
-    """Synthesize market gaps from all competitor profiles (build intent only)."""
+def build_gap_analysis_prompt(domain: str, profiles: list[dict], clarification_context: dict, market_overview: dict | None = None) -> list[dict]:
+    """Synthesize market gaps from all competitor profiles + market context (build intent only)."""
     ...
 
 def build_problem_statement_prompt(selected_gaps: list[dict], context: dict) -> list[dict]:
@@ -700,7 +712,7 @@ type ResearchEvent =
 
   // Research results (each block is independent)
   | { type: "block_ready"; block: ResearchBlock }
-  | { type: "block_error"; block_name: string; error: string }
+  | { type: "block_error"; block_name: string; error: string; error_code: string }
 
   // User interaction needed (stream will close after this)
   | { type: "clarification_needed"; questions: ClarificationQuestion[] }
@@ -708,7 +720,7 @@ type ResearchEvent =
 
   // Terminal events (stream closes after these)
   | { type: "research_complete"; journey_id: string; summary: string }
-  | { type: "error"; message: string; recoverable: boolean }
+  | { type: "error"; message: string; recoverable: boolean; error_code: string }
 
 type IntentType = "build" | "explore";  // stored on journey (improve redirects to explore)
 
@@ -721,7 +733,14 @@ type ResearchBlock = {
   id: string;
   type: "market_overview" | "competitor_list" | "product_profile" | "gap_analysis" | "problem_statement";
   title: string;
-  content: string;          // Markdown-formatted content
+  content: string;          // Markdown-formatted content (for display)
+  output_data?: Record<string, unknown>;  // Typed structured data (for programmatic use by components)
+  // output_data shape depends on block type:
+  //   competitor_list:    { competitors: CompetitorInfo[] }
+  //   gap_analysis:       { problems: ProblemArea[] }
+  //   product_profile:    { profile: ProductProfile }
+  //   problem_statement:  { statement: ProblemStatement }
+  //   market_overview:    { overview: MarketOverview }
   sources: string[];         // Source URLs
   cached: boolean;           // Was this from cache?
   cached_at?: string;        // ISO date if cached
@@ -731,7 +750,7 @@ type ResearchBlock = {
 type ClarificationQuestion = {
   id: string;
   label: string;             // "What platform are you targeting?"
-  options: { label: string; description: string }[];  // No IDs — label string is the selection key
+  options: { id: string; label: string; description: string }[];  // id = stable slug for selection tracking
   allow_multiple: boolean;   // true = multi-select chips, false = single-select radio
 }
 ```
@@ -830,7 +849,7 @@ A `clarification_needed` event is always followed by `waiting_for_selection`. Th
 → { type: "step_started", step: "exploring", label: "Analyzing selected products" }
 → { type: "block_ready", block: { type: "market_overview", ... } }
 → { type: "block_ready", block: { type: "product_profile", title: "Notion", ... } }
-→ { type: "block_error", block_name: "Obsidian", error: "Could not scrape obsidian.md" }
+→ { type: "block_error", block_name: "Obsidian", error: "Could not scrape obsidian.md", error_code: "BP-7A2F1D" }
 → { type: "step_completed", step: "exploring" }
 → { type: "research_complete", journey_id: "uuid-abc", summary: "2 of 3 blocks completed" }
    [stream closes — partial results are still shown]
@@ -880,10 +899,10 @@ Classifies the user's intent and generates clarification questions. This is alwa
       "id": "platform",
       "label": "What platform are you targeting?",
       "options": [
-        { "label": "Mobile", "description": "iOS and/or Android" },
-        { "label": "Desktop", "description": "macOS, Windows, Linux" },
-        { "label": "Web", "description": "Browser-based" },
-        { "label": "Cross-platform", "description": "All devices" }
+        { "id": "mobile", "label": "Mobile", "description": "iOS and/or Android" },
+        { "id": "desktop", "label": "Desktop", "description": "macOS, Windows, Linux" },
+        { "id": "web", "label": "Web", "description": "Browser-based" },
+        { "id": "cross-platform", "label": "Cross-platform", "description": "All devices" }
       ],
       "allow_multiple": true
     },
@@ -891,10 +910,10 @@ Classifies the user's intent and generates clarification questions. This is alwa
       "id": "content_type",
       "label": "What type of content?",
       "options": [
-        { "label": "Text notes", "description": "Written notes, markdown, documents" },
-        { "label": "Audio / voice", "description": "Voice memos, transcription" },
-        { "label": "Visual / drawings", "description": "Sketches, diagrams, whiteboards" },
-        { "label": "All-in-one", "description": "Text + audio + visual combined" }
+        { "id": "text-notes", "label": "Text notes", "description": "Written notes, markdown, documents" },
+        { "id": "audio-voice", "label": "Audio / voice", "description": "Voice memos, transcription" },
+        { "id": "visual-drawings", "label": "Visual / drawings", "description": "Sketches, diagrams, whiteboards" },
+        { "id": "all-in-one", "label": "All-in-one", "description": "Text + audio + visual combined" }
       ],
       "allow_multiple": true
     },
@@ -902,10 +921,10 @@ Classifies the user's intent and generates clarification questions. This is alwa
       "id": "positioning",
       "label": "Closest to your vision?",
       "options": [
-        { "label": "Simple & fast", "description": "Minimal, quick capture" },
-        { "label": "Power tool", "description": "Advanced features, graph views" },
-        { "label": "All-in-one workspace", "description": "Notes + docs + projects" },
-        { "label": "Specialized / niche", "description": "Domain-specific tool" }
+        { "id": "simple-fast", "label": "Simple & fast", "description": "Minimal, quick capture" },
+        { "id": "power-tool", "label": "Power tool", "description": "Advanced features, graph views" },
+        { "id": "all-in-one-workspace", "label": "All-in-one workspace", "description": "Notes + docs + projects" },
+        { "id": "specialized-niche", "label": "Specialized / niche", "description": "Domain-specific tool" }
       ],
       "allow_multiple": false
     }
@@ -940,16 +959,16 @@ User's answers to all clarification questions. Always follows classify for build
 // user_selection
 {
   "answers": [
-    { "question_id": "platform", "selected_options": ["Mobile", "Web"] },
-    { "question_id": "content_type", "selected_options": ["Text notes"] },
-    { "question_id": "positioning", "selected_options": ["Power tool"] }
+    { "question_id": "platform", "selected_option_ids": ["mobile", "web"] },
+    { "question_id": "content_type", "selected_option_ids": ["text-notes"] },
+    { "question_id": "positioning", "selected_option_ids": ["power-tool"] }
   ]
 }
 ```
 
 ### step_type: "find_competitors"
 
-Finds competitors using a layered multi-source pipeline (AlternativeTo cache → App Stores + Serper + Reddit → LLM synthesis), informed by clarification context.
+Finds competitors using a layered multi-source pipeline (AlternativeTo cache → App Stores + Tavily/Serper + Reddit → LLM synthesis), informed by clarification context.
 
 ```json
 // input_data
@@ -964,8 +983,8 @@ Finds competitors using a layered multi-source pipeline (AlternativeTo cache →
     "alternatives_cache": true,
     "app_store": true,
     "play_store": true,
-    "serper_web": true,
-    "serper_reddit": true
+    "tavily_web": true,
+    "tavily_reddit": true
   },
   "alternatives_data": [
     { "name": "Obsidian", "description": "A powerful knowledge base", "platforms": ["Windows", "Mac", "Linux", "iOS", "Android"] }
@@ -1187,7 +1206,7 @@ Request → call active_provider (e.g., Gemini Flash)
        │    │            return response
        │    └─ Failure → try next provider...
        └─ All providers exhausted
-            → SSE: { type: "error", message: "AI service temporarily unavailable", recoverable: false }
+            → SSE: { type: "error", message: "AI service temporarily unavailable", recoverable: false, error_code: "BP-XXXXXX" }
             → Return any partial results already collected
 ```
 
@@ -1196,17 +1215,19 @@ Request → call active_provider (e.g., Gemini Flash)
 ### Search Failures
 
 ```
-serper_search(query)
+tavily_search(query)
   ├─ Success → return results
   └─ Failure (network error / invalid API key / quota exhausted)
        ├─ Log error
-       ├─ Try duckduckgo_search(query)  [last-resort emergency fallback]
+       ├─ Try serper_search(query)  [first fallback]
        │    ├─ Success → return results
-       │    └─ Failure → return empty results with warning
-       └─ SSE: { type: "block_error", block_name: "Search", error: "Search temporarily unavailable" }
+       │    └─ Failure → try duckduckgo_search(query)  [last-resort emergency]
+       │         ├─ Success → return results
+       │         └─ Failure → return empty results with warning
+       └─ SSE: { type: "block_error", block_name: "Search", error: "Search temporarily unavailable", error_code: "BP-XXXXXX" }
 ```
 
-**DuckDuckGo is the last-resort emergency fallback** — only used when Serper is completely unavailable. It is always free with no quota, so it almost never fails unless there's a network issue.
+**Search provider hierarchy**: Tavily (primary) → Serper (fallback) → DuckDuckGo (last-resort emergency). DuckDuckGo is only used when both Tavily and Serper are completely unavailable. It is always free with no quota, so it almost never fails unless there's a network issue.
 
 ### App Store Scraper Failures (V0-EXPERIMENTAL)
 
@@ -1246,7 +1267,7 @@ scrape(url) — acquires semaphore slot
   │              ├─ Success → return scraped content (lower quality but functional)
   │              └─ Failure → raise ScraperError
   └─ On ScraperError → skip this product
-     SSE: { type: "block_error", block_name: "Product Name", error: "Could not access product website" }
+     SSE: { type: "block_error", block_name: "Product Name", error: "Could not access product website", error_code: "BP-XXXXXX" }
 ```
 
 ### "Try Again" Behavior
@@ -1259,10 +1280,68 @@ When the frontend renders a `block_error` card with a "Try again" button, clicki
 
 | Error Type | UI Treatment |
 |------------|-------------|
-| `block_error` | Inline warning card in Workspace: yellow/amber background, error message, "Try again" button (re-runs full research) |
-| `error` (recoverable) | Toast notification at top of Sidebar |
-| `error` (non-recoverable) | Modal overlay with error message and "Start New Research" button |
+| `block_error` | Inline warning card in Workspace: yellow/amber background, user-friendly error message, `(Ref: BP-XXXXXX)` in small muted text, "Try again" button (re-runs full research) |
+| `error` (recoverable) | Toast notification at top of Sidebar with user-friendly message + ref code. Auto-dismiss after 8 seconds. |
+| `error` (non-recoverable) | Modal overlay with user-friendly message, `(Ref: BP-XXXXXX)` copyable ref code, and "Start New Research" button |
 | LLM provider switch | Silent — user doesn't see this. Results continue normally from new provider. |
+
+**Error display rules**: The frontend NEVER shows raw error strings, stack traces, HTTP status codes, provider names (e.g., "Gemini failed"), internal model names, or JSON parsing errors. All user-facing errors use friendly messages. The `error_code` field (format: `BP-XXXXXX`) is always displayed so users can report it and the team can grep backend logs for the exact code. See `DESIGN_GUIDE.md` for error display styling.
+
+### Logging Standard (V0)
+
+V0 uses a structured `print()`-based logger defined in `backend/app/config.py`. Every log line follows the format:
+
+```
+[2026-02-12T10:30:45.123456+00:00] [INFO] pipeline started | journey_id=abc-123 pipeline=classify intent=build
+```
+
+**Components**: `[ISO_TIMESTAMP] [LEVEL] message | key1=value1 key2=value2`
+
+**Logger API** (defined in `config.py`, see `MODULE_SPEC.md` Section 1):
+
+```python
+from app.config import log, generate_error_code
+
+# Always include journey_id when available
+log("INFO", "pipeline started", journey_id="abc-123", pipeline="classify")
+log("ERROR", "llm call failed", journey_id="abc-123", provider="gemini", error_code="BP-3F8A2C", error="quota exceeded")
+```
+
+**Error codes**: Every user-facing error (sent as `BlockErrorEvent` or `ErrorEvent` via SSE) MUST have an `error_code` generated by `generate_error_code()`. The same code appears in:
+1. The backend log line (`error_code=BP-XXXXXX`)
+2. The SSE event payload (`error_code: "BP-XXXXXX"`)
+3. The user-facing UI (`Ref: BP-XXXXXX`)
+
+This creates a direct link: user reports ref code, team greps logs for it.
+
+**Mandatory log points** (every backend module must log at these points):
+
+| Module | When | Level | Example |
+|--------|------|-------|---------|
+| `api/research.py` | Pipeline entry | INFO | `log("INFO", "pipeline started", journey_id=..., pipeline=..., intent=...)` |
+| `api/research.py` | Pipeline exit | INFO | `log("INFO", "pipeline completed", journey_id=..., pipeline=..., duration_ms=...)` |
+| `api/research.py` | Every SSE event sent | INFO | `log("INFO", "sse event sent", journey_id=..., event_type=..., step_type=...)` |
+| `api/research.py` | SSE error event sent | ERROR | `log("ERROR", "sse error event sent", journey_id=..., error_code=..., message=..., recoverable=...)` |
+| `llm.py` | Before LLM call | INFO | `log("INFO", "llm call started", journey_id=..., provider=..., prompt_type=...)` |
+| `llm.py` | After LLM success | INFO | `log("INFO", "llm call succeeded", journey_id=..., provider=..., duration_ms=..., tokens_used=...)` |
+| `llm.py` | LLM call failure | ERROR | `log("ERROR", "llm call failed", journey_id=..., provider=..., error=str(e), error_code=...)` |
+| `llm.py` | Fallback to next provider | WARN | `log("WARN", "llm provider fallback", journey_id=..., from_provider=..., to_provider=..., reason=...)` |
+| `llm.py` | Output validation failure | ERROR | `log("ERROR", "llm output validation failed", journey_id=..., raw_output=<truncated>, schema=..., error_code=...)` |
+| `search.py` | Before search | INFO | `log("INFO", "search started", journey_id=..., provider=..., query=...)` |
+| `search.py` | Search success | INFO | `log("INFO", "search completed", journey_id=..., provider=..., results_count=..., duration_ms=...)` |
+| `search.py` | Search failure | ERROR | `log("ERROR", "search failed", journey_id=..., provider=..., error=str(e), error_code=...)` |
+| `scraper.py` | Before scrape | INFO | `log("INFO", "scrape started", journey_id=..., url=..., method=...)` |
+| `scraper.py` | Scrape success | INFO | `log("INFO", "scrape completed", journey_id=..., url=..., content_length=..., duration_ms=...)` |
+| `scraper.py` | Scrape fallback | WARN | `log("WARN", "scrape failed, trying fallback", journey_id=..., url=..., method="jina", error=str(e))` |
+| `scraper.py` | All scrape methods failed | ERROR | `log("ERROR", "scrape failed all methods", journey_id=..., url=..., error_code=...)` |
+| `db.py` | Write failure | ERROR | `log("ERROR", "db write failed", journey_id=..., operation=..., error=str(e), error_code=...)` |
+| `db.py` | Read failure | ERROR | `log("ERROR", "db read failed", journey_id=..., operation=..., error=str(e), error_code=...)` |
+| `app_stores.py` | Scrape failure | WARN | `log("WARN", "app store scrape failed", journey_id=..., store=..., error=str(e))` |
+| `alternatives.py` | Failure | WARN | `log("WARN", "alternatives lookup failed", journey_id=..., error=str(e))` |
+
+**Request correlation for REST calls**: The frontend includes an `X-Request-Id` header (UUID) on every fetch call. The backend logs this via FastAPI middleware so REST errors can be matched to backend logs.
+
+**V1 migration**: Replace the `log()` function body with `structlog.get_logger()` calls. All existing call sites keep working. Add correlation IDs, JSON output, and Sentry integration. See `TECH_DEBT.md`.
 
 ### Single-Instance Assumption (V0)
 
@@ -1322,7 +1401,7 @@ db.py: get_cached_alternatives("notion")  ← normalized_name lookup
     │      Merge with live search results before passing to LLM
     │
     └─ Not found OR scraped_at > 30 days ago
-        └─ Skip cache, rely on live search sources (Serper, App Stores, Reddit)
+        └─ Skip cache, rely on live search sources (Tavily/Serper, App Stores, Reddit)
 ```
 
 The `alternatives_cache` table is pre-seeded via `python -m app.seed_alternatives`. It stores product-to-alternatives mappings from AlternativeTo with a 30-day TTL. The pipeline checks this table FIRST before any live search — instant and free.
@@ -1418,8 +1497,8 @@ Railway Project: "blueprint"
 │   │   ├── GEMINI_API_KEY=...
 │   │   ├── OPENAI_API_KEY=...
 │   │   ├── ANTHROPIC_API_KEY=...
-│   │   ├── GOOGLE_SEARCH_API_KEY=...
-│   │   ├── GOOGLE_SEARCH_ENGINE_ID=...
+│   │   ├── TAVILY_API_KEY=...
+│   │   ├── SERPER_API_KEY=...
 │   │   ├── SUPABASE_URL=...
 │   │   ├── SUPABASE_SERVICE_KEY=...
 │   │   └── JINA_API_KEY=...

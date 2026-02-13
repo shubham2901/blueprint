@@ -8,6 +8,7 @@ import asyncio
 import json
 import time
 from dataclasses import asdict
+from datetime import datetime
 from hashlib import sha256
 
 from fastapi import APIRouter, HTTPException
@@ -30,6 +31,9 @@ from app.models import (
     ProblemStatement,
     ProductProfile,
     QuickResponseEvent,
+    RefineCompleteEvent,
+    RefineRequest,
+    RefineStartedEvent,
     ResearchBlock,
     ResearchCompleteEvent,
     ResearchRequest,
@@ -57,9 +61,16 @@ def _make_dedup_key(journey_id: str | None, prompt: str | None) -> str:
     return f"prompt:{sha256((prompt or '').encode()).hexdigest()[:16]}"
 
 
+def _json_serializer(obj):
+    """Custom JSON serializer for objects not serializable by default json module."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def _format_sse_event(event_data: dict) -> str:
     """Format a dict as an SSE event string. Format: 'data: {json}\\n\\n'"""
-    return f"data: {json.dumps(event_data)}\n\n"
+    return f"data: {json.dumps(event_data, default=_json_serializer)}\n\n"
 
 
 def _serialize_event(event) -> str:
@@ -159,6 +170,332 @@ async def submit_selection(journey_id: str, request: SelectionRequest) -> Stream
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/{journey_id}/refine")
+async def refine_research(journey_id: str, request: RefineRequest) -> StreamingResponse:
+    """
+    POST /api/research/{journey_id}/refine
+
+    Refine a research step to get more/better results.
+    Returns SSE stream with updated blocks.
+    """
+    journey = await db.get_journey(journey_id)
+    if not journey:
+        raise HTTPException(status_code=404, detail="Journey not found")
+
+    dedup_key = f"refine:{journey_id}:{request.step_type}"
+    if dedup_key in _active_researches:
+        raise HTTPException(status_code=409, detail="Refinement already in progress")
+
+    _active_researches[dedup_key] = True
+
+    async def stream():
+        try:
+            async for chunk in _run_refine_pipeline(journey_id, request, journey):
+                yield chunk
+        finally:
+            _active_researches.pop(dedup_key, None)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# -----------------------------------------------------------------------------
+# Pipeline: Refine
+# -----------------------------------------------------------------------------
+
+
+async def _run_refine_pipeline(journey_id: str, request: RefineRequest, journey: dict):
+    """Async generator yielding SSE events for refinement.
+    
+    Refinement re-runs a step with enhanced search/analysis to get more results.
+    """
+    start_ms = time.perf_counter()
+    step_type = request.step_type
+    feedback = request.feedback
+    log("INFO", "pipeline started", journey_id=journey_id, pipeline="refine", step_type=step_type)
+
+    try:
+        # Send refine started event
+        evt = RefineStartedEvent(
+            step_type=step_type,
+            message=f"Refining {step_type.replace('_', ' ')}..."
+        )
+        yield _serialize_event(evt)
+        log("INFO", "sse event sent", journey_id=journey_id, event_type="refine_started", step_type=step_type)
+
+        steps = journey.get("steps", [])
+        classify_step = next((s for s in steps if s.get("step_type") == "classify"), None)
+        domain = (classify_step or {}).get("output_data", {}).get("domain") or ""
+
+        # Get clarification context from clarify step
+        clarify_step = next((s for s in steps if s.get("step_type") == "clarify"), None)
+        clarification_context = {}
+        if clarify_step and clarify_step.get("user_selection", {}).get("answers"):
+            for ans in clarify_step["user_selection"]["answers"]:
+                qid = ans.get("question_id")
+                opts = ans.get("selected_option_ids", [])
+                other_text = ans.get("other_text")
+                if qid:
+                    if other_text:
+                        clarification_context[qid] = opts + [f"Other: {other_text}"]
+                    else:
+                        clarification_context[qid] = opts
+
+        if step_type == "find_competitors":
+            async for chunk in _refine_competitors(journey_id, domain, clarification_context, feedback):
+                yield chunk
+        elif step_type == "explore":
+            find_comp_step = next((s for s in steps if s.get("step_type") == "find_competitors"), None)
+            competitors = (find_comp_step or {}).get("output_data", {}).get("competitors") or []
+            select_step = next((s for s in steps if s.get("step_type") == "select_competitors"), None)
+            selected_ids = (select_step or {}).get("user_selection", {}).get("competitor_ids") or []
+            selected_competitors = [c for c in competitors if c.get("id") in selected_ids]
+            async for chunk in _refine_explore(journey_id, selected_competitors, feedback):
+                yield chunk
+        elif step_type == "gap_analysis":
+            # Get profiles from explore step
+            explore_step = next((s for s in steps if s.get("step_type") == "explore"), None)
+            profiles = (explore_step or {}).get("output_data", {}).get("profiles") or []
+            async for chunk in _refine_gap_analysis(journey_id, domain, profiles, clarification_context, feedback):
+                yield chunk
+        elif step_type == "define_problem":
+            # Get gap analysis and selected problems
+            gap_step = next((s for s in steps if s.get("step_type") == "explore"), None)
+            gap_data = (gap_step or {}).get("output_data", {}).get("gap_analysis") or {}
+            problems = gap_data.get("problems") or []
+            select_prob_step = next((s for s in steps if s.get("step_type") == "select_problems"), None)
+            selected_problem_ids = (select_prob_step or {}).get("user_selection", {}).get("problem_ids") or []
+            selected_problems = [p for p in problems if p.get("id") in selected_problem_ids]
+            async for chunk in _refine_problem_statement(journey_id, selected_problems, domain, clarification_context, feedback):
+                yield chunk
+        else:
+            code = generate_error_code()
+            log("ERROR", "invalid refine step_type", journey_id=journey_id, step_type=step_type, error_code=code)
+            evt = ErrorEvent(
+                message="Invalid step type for refinement.",
+                recoverable=False,
+                error_code=code,
+            )
+            yield _serialize_event(evt)
+            return
+
+        evt = RefineCompleteEvent(step_type=step_type)
+        yield _serialize_event(evt)
+        log("INFO", "pipeline completed", journey_id=journey_id, pipeline="refine", step_type=step_type, duration_ms=int((time.perf_counter() - start_ms) * 1000))
+
+    except (LLMError, LLMValidationError) as e:
+        code = generate_error_code()
+        log("ERROR", "refine error", journey_id=journey_id, error_code=code, error=str(e))
+        evt = ErrorEvent(
+            message="We're having trouble refining results right now. Please try again.",
+            recoverable=True,
+            error_code=code,
+        )
+        yield _serialize_event(evt)
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "refine error", journey_id=journey_id, error=str(e), error_code=code)
+        evt = ErrorEvent(
+            message="Something unexpected happened. Please try again.",
+            recoverable=True,
+            error_code=code,
+        )
+        yield _serialize_event(evt)
+
+
+async def _refine_competitors(journey_id: str, domain: str, clarification_context: dict, feedback: str | None):
+    """Refine competitor search with expanded search and more results."""
+    ctx_parts = []
+    for k, v in clarification_context.items():
+        if isinstance(v, list):
+            ctx_parts.extend(str(x) for x in v)
+        else:
+            ctx_parts.append(str(v))
+    context_str = " ".join(ctx_parts) if ctx_parts else ""
+    
+    # Expanded search queries for refinement
+    search_queries = [
+        f"{domain} {context_str} competitors 2025",
+        f"{domain} {context_str} alternatives apps",
+        f"best {domain} software tools {context_str}",
+    ]
+    
+    all_search_results = []
+    all_reddit_results = []
+    
+    # Run multiple searches in parallel
+    search_tasks = [search.search(q, num_results=10, journey_id=journey_id) for q in search_queries]
+    reddit_task = search.search_reddit(f"{domain} {context_str} alternatives recommendations", num_results=10, journey_id=journey_id)
+    
+    results = await asyncio.gather(*search_tasks, reddit_task, return_exceptions=True)
+    
+    for i, res in enumerate(results[:-1]):  # Search results
+        if isinstance(res, list):
+            all_search_results.extend(res)
+    if isinstance(results[-1], list):  # Reddit results
+        all_reddit_results = results[-1]
+    
+    search_results_dict = [asdict(r) for r in all_search_results] if all_search_results else []
+    reddit_results_dict = [asdict(r) for r in all_reddit_results] if all_reddit_results else []
+    
+    # Build enhanced prompt with feedback
+    refine_instruction = ""
+    if feedback:
+        refine_instruction = f"\n\n# User Feedback for Refinement\nThe user wants: {feedback}\nFocus on finding competitors that match this feedback."
+    
+    competitors_prompt = prompts.build_competitors_prompt(
+        domain=domain,
+        clarification_context=clarification_context,
+        alternatives_data=None,
+        app_store_results=None,
+        search_results=search_results_dict,
+        reddit_results=reddit_results_dict,
+    )
+    # Append refinement instruction
+    if refine_instruction:
+        competitors_prompt[0]["content"] += refine_instruction
+    
+    competitors: CompetitorList = await llm.call_llm_structured(
+        competitors_prompt,
+        CompetitorList,
+        journey_id=journey_id,
+    )
+    
+    sources = list(set((c.url for c in competitors.competitors if c.url) or []))[:10]
+    block = ResearchBlock(
+        type="competitor_list",
+        title="Competitors (Refined)",
+        content="\n\n".join(f"**{c.name}**: {c.description}" for c in competitors.competitors),
+        output_data={"competitors": [c.model_dump() for c in competitors.competitors]},
+        sources=sources,
+    )
+    
+    evt = BlockReadyEvent(block=block)
+    yield _serialize_event(evt)
+    log("INFO", "sse event sent", journey_id=journey_id, event_type="block_ready", block_type="competitor_list_refined")
+
+
+async def _refine_explore(journey_id: str, competitors: list[dict], feedback: str | None):
+    """Refine product exploration with deeper analysis."""
+    # Re-analyze competitors with enhanced prompts
+    for comp in competitors:
+        name = comp.get("name", "")
+        url = comp.get("url", "")
+        
+        scraped = ""
+        reddit_content = ""
+        
+        try:
+            if url:
+                scraped = await scraper.scrape(url)
+        except ScraperError:
+            pass
+        
+        try:
+            # Enhanced Reddit search
+            reddit_results = await search.search_reddit(f"{name} review pros cons 2025", num_results=10, journey_id=journey_id)
+            reddit_content = "\n\n".join(r.snippet for r in reddit_results) if reddit_results else ""
+        except Exception:
+            pass
+        
+        try:
+            explore_prompt = prompts.build_explore_prompt(name, scraped, reddit_content)
+            # Add refinement context
+            if feedback:
+                explore_prompt[0]["content"] += f"\n\n# Refinement Focus\nThe user wants more detail on: {feedback}"
+            
+            profile: ProductProfile = await llm.call_llm_structured(
+                explore_prompt,
+                ProductProfile,
+                journey_id=journey_id,
+            )
+            
+            block = ResearchBlock(
+                type="product_profile",
+                title=f"{profile.name} (Refined)",
+                content=profile.content,
+                output_data=profile.model_dump(),
+                sources=profile.sources,
+            )
+            
+            evt = BlockReadyEvent(block=block)
+            yield _serialize_event(evt)
+            log("INFO", "sse event sent", journey_id=journey_id, event_type="block_ready", block_type="product_profile_refined")
+            
+        except (LLMError, LLMValidationError) as e:
+            log("WARN", "refine explore failed for competitor", journey_id=journey_id, competitor=name, error=str(e))
+
+
+async def _refine_gap_analysis(journey_id: str, domain: str, profiles: list[dict], clarification_context: dict, feedback: str | None):
+    """Refine gap analysis with deeper insights."""
+    gap_prompt = prompts.build_gap_analysis_prompt(
+        domain=domain,
+        profiles=profiles,
+        clarification_context=clarification_context,
+    )
+    
+    # Add refinement context
+    if feedback:
+        gap_prompt[0]["content"] += f"\n\n# Refinement Focus\nThe user wants: {feedback}\nPrioritize gaps related to this feedback."
+    
+    gap_analysis: GapAnalysis = await llm.call_llm_structured(
+        gap_prompt,
+        GapAnalysis,
+        journey_id=journey_id,
+    )
+    
+    block = ResearchBlock(
+        type="gap_analysis",
+        title="Market Gaps (Refined)",
+        content="\n\n".join(f"**{p.title}** ({p.opportunity_size})\n{p.description}" for p in gap_analysis.problems),
+        output_data={"problems": [p.model_dump() for p in gap_analysis.problems]},
+        sources=gap_analysis.sources,
+    )
+    
+    evt = BlockReadyEvent(block=block)
+    yield _serialize_event(evt)
+    log("INFO", "sse event sent", journey_id=journey_id, event_type="block_ready", block_type="gap_analysis_refined")
+
+
+async def _refine_problem_statement(journey_id: str, selected_problems: list[dict], domain: str, clarification_context: dict, feedback: str | None):
+    """Refine problem statement with better framing."""
+    context = {
+        "domain": domain,
+        "clarification_context": clarification_context,
+    }
+    
+    problem_prompt = prompts.build_problem_statement_prompt(selected_problems, context)
+    
+    # Add refinement context
+    if feedback:
+        problem_prompt[0]["content"] += f"\n\n# Refinement Focus\nThe user wants: {feedback}\nAdjust the problem statement accordingly."
+    
+    problem_statement: ProblemStatement = await llm.call_llm_structured(
+        problem_prompt,
+        ProblemStatement,
+        journey_id=journey_id,
+    )
+    
+    block = ResearchBlock(
+        type="problem_statement",
+        title="Problem Statement (Refined)",
+        content=problem_statement.content,
+        output_data=problem_statement.model_dump(),
+        sources=[],
+    )
+    
+    evt = BlockReadyEvent(block=block)
+    yield _serialize_event(evt)
+    log("INFO", "sse event sent", journey_id=journey_id, event_type="block_ready", block_type="problem_statement_refined")
 
 
 # -----------------------------------------------------------------------------
@@ -291,8 +628,13 @@ async def _run_competitor_pipeline(journey_id: str, selection: dict, journey: di
         for ans in selection.get("answers", []):
             qid = ans.get("question_id")
             opts = ans.get("selected_option_ids", [])
+            other_text = ans.get("other_text")
             if qid:
-                clarification_context[qid] = opts
+                # Include "other" text in the context if provided
+                if other_text:
+                    clarification_context[qid] = opts + [f"Other: {other_text}"]
+                else:
+                    clarification_context[qid] = opts
 
         step_num = await db.get_next_step_number(journey_id)
         questions_presented = (classify_step or {}).get("output_data", {}).get("clarification_questions") or []
@@ -319,8 +661,8 @@ async def _run_competitor_pipeline(journey_id: str, selection: dict, journey: di
 
         norm_domain = db.normalize_product_name(domain or "general")
         alternatives_task = db.get_cached_alternatives(norm_domain)
-        search_task = search.search(search_query, num_results=10)
-        reddit_task = search.search_reddit(f"{domain} {context_str}", num_results=5)
+        search_task = search.search(search_query, num_results=10, journey_id=journey_id)
+        reddit_task = search.search_reddit(f"{domain} {context_str}", num_results=5, journey_id=journey_id)
 
         alternatives_data, search_results, reddit_results = await asyncio.gather(
             alternatives_task,
@@ -484,7 +826,7 @@ async def _run_explore_pipeline(journey_id: str, selection: dict, journey: dict)
                 pass
 
             try:
-                reddit_results = await search.search_reddit(f"{name} review", num_results=5)
+                reddit_results = await search.search_reddit(f"{name} review", num_results=5, journey_id=journey_id)
                 reddit_content = "\n\n".join(r.snippet for r in reddit_results) if reddit_results else ""
             except Exception:
                 pass

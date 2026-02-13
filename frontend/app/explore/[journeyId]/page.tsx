@@ -7,9 +7,9 @@
  * Manages the full ResearchState and dispatches events to child components.
  */
 
-import { useEffect, useReducer, useRef, useCallback } from "react";
+import { useEffect, useReducer, useRef, useCallback, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { startResearch, sendSelection, type SSEConnection } from "@/lib/api";
+import { startResearch, sendSelection, sendRefine, type SSEConnection } from "@/lib/api";
 import type {
   ResearchState,
   ResearchEvent,
@@ -17,6 +17,7 @@ import type {
   CompetitorInfo,
   ProblemArea,
   StepName,
+  RefineRequest,
 } from "@/lib/types";
 import { Sidebar } from "@/components/Sidebar";
 import { Workspace } from "@/components/Workspace";
@@ -48,7 +49,8 @@ type Action =
   | { type: "SET_PHASE"; phase: ResearchState["phase"] }
   | { type: "SET_SELECTED_COMPETITORS"; ids: string[] }
   | { type: "SET_SELECTED_PROBLEMS"; ids: string[] }
-  | { type: "RESTORE_STATE"; state: Partial<ResearchState> };
+  | { type: "RESTORE_STATE"; state: Partial<ResearchState> }
+  | { type: "SET_REFINING"; isRefining: boolean };
 
 function reducer(state: ResearchState, action: Action): ResearchState {
   switch (action.type) {
@@ -171,6 +173,12 @@ function reducer(state: ResearchState, action: Action): ResearchState {
             },
           };
 
+        case "refine_started":
+          return state; // Handled by isRefining state
+
+        case "refine_complete":
+          return state; // Handled by isRefining state
+
         default:
           return state;
       }
@@ -189,7 +197,9 @@ export default function ExplorePage() {
   const journeyIdParam = params.journeyId as string;
 
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [isRefining, setIsRefining] = useState(false);
   const sseRef = useRef<SSEConnection | null>(null);
+  const refineRef = useRef<SSEConnection | null>(null);
   const hasStartedRef = useRef(false);
   const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -339,6 +349,28 @@ export default function ExplorePage() {
     [router],
   );
 
+  const handleRefine = useCallback(
+    (stepType: RefineRequest["step_type"], feedback?: string) => {
+      if (!state.journeyId || isRefining) return;
+      
+      setIsRefining(true);
+      refineRef.current = sendRefine(
+        state.journeyId,
+        { step_type: stepType, feedback },
+        handleEvent,
+        (error) => {
+          console.error("Refine Error:", error);
+          setIsRefining(false);
+        },
+        () => {
+          setIsRefining(false);
+          refineRef.current = null;
+        },
+      );
+    },
+    [state.journeyId, isRefining, handleEvent],
+  );
+
   // ── Render ─────────────────────────────────────────────
 
   return (
@@ -363,6 +395,8 @@ export default function ExplorePage() {
           }
           onDefineProblems={handleDefineProblems}
           onStartNew={() => router.push("/")}
+          onRefine={handleRefine}
+          isRefining={isRefining}
         />
       </div>
 

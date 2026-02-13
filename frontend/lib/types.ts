@@ -36,6 +36,8 @@ export type ResearchEvent =
   | ClarificationNeededEvent
   | WaitingForSelectionEvent
   | ResearchCompleteEvent
+  | RefineStartedEvent
+  | RefineCompleteEvent
   | ErrorEvent;
 
 export interface JourneyStartedEvent {
@@ -102,6 +104,17 @@ export interface ErrorEvent {
   error_code: string; // User-facing ref code, e.g., "BP-3F8A2C"
 }
 
+export interface RefineStartedEvent {
+  type: "refine_started";
+  step_type: string;
+  message: string;
+}
+
+export interface RefineCompleteEvent {
+  type: "refine_complete";
+  step_type: string;
+}
+
 // ──────────────────────────────────────────────────────
 // Block Types
 // ──────────────────────────────────────────────────────
@@ -128,6 +141,7 @@ export interface ClarificationQuestion {
   label: string;
   options: ClarificationOption[];
   allow_multiple: boolean;
+  allow_other: boolean; // If true, show "Other" option with text input
 }
 
 export interface ClarificationOption {
@@ -208,6 +222,7 @@ export interface ResearchRequest {
 export interface ClarificationAnswer {
   question_id: string;
   selected_option_ids: string[]; // Option ID slugs, e.g., ["mobile", "web"]
+  other_text?: string; // Free-form text when user selects "Other"
 }
 
 export interface ClarificationSelection {
@@ -225,6 +240,11 @@ export interface ProblemSelection {
 export interface SelectionRequest {
   step_type: "clarify" | "select_competitors" | "select_problems";
   selection: ClarificationSelection | CompetitorSelection | ProblemSelection;
+}
+
+export interface RefineRequest {
+  step_type: "find_competitors" | "explore" | "gap_analysis" | "define_problem";
+  feedback?: string;
 }
 
 // ──────────────────────────────────────────────────────

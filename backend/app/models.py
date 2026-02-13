@@ -26,6 +26,12 @@ class SelectionRequest(BaseModel):
     selection: dict = Field(..., description="Selection payload — shape depends on step_type")
 
 
+class RefineRequest(BaseModel):
+    """Request to refine a research step."""
+    step_type: str = Field(..., description="Step to refine: 'find_competitors' | 'explore' | 'gap_analysis' | 'define_problem'")
+    feedback: Optional[str] = Field(None, description="User feedback on what to improve")
+
+
 # -----------------------------------------------------------------------------
 # Block Models (used in SSE events and LLM responses)
 # -----------------------------------------------------------------------------
@@ -42,6 +48,14 @@ class ClarificationQuestion(BaseModel):
     label: str
     options: list[ClarificationOption]
     allow_multiple: bool = False
+    allow_other: bool = False  # If true, show "Other" option with text input
+
+
+class ClarificationAnswer(BaseModel):
+    """User's answer to a clarification question."""
+    question_id: str
+    selected_option_ids: list[str]
+    other_text: Optional[str] = None  # Free-form text when user selects "Other"
 
 
 class ResearchBlock(BaseModel):
@@ -198,6 +212,17 @@ class ErrorEvent(BaseModel):
     message: str
     recoverable: bool
     error_code: str
+
+
+class RefineStartedEvent(BaseModel):
+    type: str = "refine_started"
+    step_type: str  # Which step is being refined
+    message: str
+
+
+class RefineCompleteEvent(BaseModel):
+    type: str = "refine_complete"
+    step_type: str
 
 
 # -----------------------------------------------------------------------------

@@ -29,12 +29,12 @@ class SearchError(Exception):
 DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; Blueprint/1.0; +https://github.com/blueprint)"
 
 
-async def search(query: str, num_results: int = 10) -> list[SearchResult]:
+async def search(query: str, num_results: int = 10, journey_id: str | None = None) -> list[SearchResult]:
     """Search the web with fallback chain: Tavily → Serper → DuckDuckGo.
 
     Returns empty list if all providers fail (caller handles gracefully).
     """
-    log("INFO", "search started", provider="tavily", query=query, num_results=num_results)
+    log("INFO", "search started", provider="tavily", query=query, num_results=num_results, journey_id=journey_id or "N/A")
 
     start = time.monotonic()
     last_error = None
@@ -69,8 +69,14 @@ async def search(query: str, num_results: int = 10) -> list[SearchResult]:
     return []
 
 
-async def _tavily_search(query: str, num_results: int = 10) -> list[SearchResult]:
-    """Tavily Search API (primary)."""
+async def _tavily_search(query: str, num_results: int = 10, time_range: str = "year") -> list[SearchResult]:
+    """Tavily Search API (primary).
+    
+    Args:
+        query: Search query string
+        num_results: Max results to return
+        time_range: Time filter - "day", "week", "month", "year" (default: "year")
+    """
     try:
         async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": DEFAULT_USER_AGENT}) as client:
             response = await client.post(
@@ -80,6 +86,7 @@ async def _tavily_search(query: str, num_results: int = 10) -> list[SearchResult
                     "query": query,
                     "max_results": num_results,
                     "search_depth": "basic",
+                    "time_range": time_range,  # Filter to last year by default
                 },
             )
             response.raise_for_status()
@@ -146,6 +153,6 @@ async def _duckduckgo_search(query: str, num_results: int = 10) -> list[SearchRe
         raise SearchError(str(e)) from e
 
 
-async def search_reddit(query: str, num_results: int = 5) -> list[SearchResult]:
+async def search_reddit(query: str, num_results: int = 5, journey_id: str | None = None) -> list[SearchResult]:
     """Search Reddit via site:reddit.com query."""
-    return await search(f"site:reddit.com {query}", num_results=num_results)
+    return await search(f"site:reddit.com {query}", num_results=num_results, journey_id=journey_id)

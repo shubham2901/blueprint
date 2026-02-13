@@ -6,6 +6,7 @@ import type {
   CompetitorInfo,
   ProblemArea,
   FatalError,
+  RefineRequest,
 } from "@/lib/types";
 import { ResearchBlock } from "./ResearchBlock";
 import { BlockErrorCard } from "./BlockErrorCard";
@@ -26,6 +27,8 @@ interface WorkspaceProps {
   onProblemSelectionChange: (ids: string[]) => void;
   onDefineProblems: (ids: string[]) => void;
   onStartNew: () => void;
+  onRefine?: (stepType: RefineRequest["step_type"], feedback?: string) => void;
+  isRefining?: boolean;
 }
 
 export function Workspace({
@@ -42,6 +45,8 @@ export function Workspace({
   onProblemSelectionChange,
   onDefineProblems,
   onStartNew,
+  onRefine,
+  isRefining = false,
 }: WorkspaceProps) {
   const waitingForCompetitors = phase === "waiting_for_competitors";
   const waitingForProblems = phase === "waiting_for_problems";
@@ -110,7 +115,12 @@ export function Workspace({
         {(blocks.length > 0 || blockErrors.length > 0) && (
           <div className="flex flex-col gap-4">
             {blocks.map((block) => (
-              <ResearchBlock key={block.id} block={block} />
+              <ResearchBlock
+                key={block.id}
+                block={block}
+                onRefine={onRefine}
+                isRefining={isRefining}
+              />
             ))}
             {blockErrors.map((err) => (
               <BlockErrorCard

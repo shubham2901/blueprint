@@ -166,25 +166,23 @@ async def call_llm(messages: list[dict], journey_id: str | None = None) -> str:
                 elif hasattr(msg, 'reasoning_content') and msg.reasoning_content:
                     # If only reasoning exists (no content), use it as a fallback
                     content = msg.reasoning_content
-                # Log warning if we got tokens but no content
-                if not content:
-                    # Dump all message fields for debugging
-                    msg_dict = {}
-                    for key in dir(msg):
-                        if not key.startswith('_'):
-                            try:
-                                val = getattr(msg, key)
-                                if not callable(val):
-                                    msg_dict[key] = str(val)[:100] if val else None
-                            except:
-                                pass
-                    log("WARN", "llm returned empty content", 
-                        journey_id=journey_id, provider=provider,
-                        message_fields=str(msg_dict)[:500])
 
             tokens_used = None
             if hasattr(response, "usage") and response.usage:
                 tokens_used = getattr(response.usage, "total_tokens", None)
+
+            # If we got tokens but no content, treat it as an error and fallback
+            # This handles Gemini 2.5 "thinking" mode returning empty content
+            if not content:
+                log(
+                    "WARN",
+                    "llm returned empty content, will try next provider",
+                    journey_id=journey_id,
+                    provider=provider,
+                    duration_ms=duration_ms,
+                    tokens_used=tokens_used,
+                )
+                raise ValueError(f"Provider {provider} returned empty content")
 
             log(
                 "INFO",
@@ -202,7 +200,7 @@ async def call_llm(messages: list[dict], journey_id: str | None = None) -> str:
                 _active_provider = provider
                 await db.update_llm_state(provider, reason=f"Fallback after: {last_error!s}")
 
-            return content or ""
+            return content
 
         except Exception as e:
             code = generate_error_code()

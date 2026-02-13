@@ -103,10 +103,10 @@ LLM_CONFIG = {
         ),
     },
     "temperature": 0.3,
-    "max_tokens": 2000,
+    "max_tokens": 8000,
     "fallback_chain": [
-        "gemini/gemini-2.5-pro",         # Primary — newest, best quality
-        "gemini/gemini-2.5-flash",       # Fallback 1 — fast + cheap
+        "gemini/gemini-3-flash-preview", # Primary — Gemini 3 Flash
+        "gemini/gemini-2.5-flash",       # Fallback 1 — fast, reliable
         "gemini/gemini-2.0-flash",       # Fallback 2 — free tier
         "openai/gpt-4o-mini",            # Fallback 3 — non-Google fallback
         "anthropic/claude-3-haiku",      # Fallback 4 — last resort

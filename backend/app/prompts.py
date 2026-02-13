@@ -119,6 +119,12 @@ Generate clarification questions ONLY when intent is build, explore, or improve.
 - true: When the user could reasonably want multiple (e.g., platforms, feature categories, content types)
 - false: When the question asks for a primary direction or positioning (e.g., "closest to your vision?", "primary audience?", "main goal?")
 
+## allow_other Rules
+- Set allow_other: true when the question has options that might not cover all possibilities and the user may have a specific alternative in mind.
+- Typical questions where allow_other should be true: target audience, positioning/vision, domain-specific third dimension.
+- Typical questions where allow_other should be false: target platform (options are exhaustive), research focus (predefined categories).
+- When a user provides "Other" text, it will be used as additional context for the research.
+
 ## Required Dimensions by Intent
 
 ### For "build" intent — generate questions covering THESE dimensions (in order):
@@ -182,7 +188,8 @@ Return ONLY a single JSON object. No markdown code fences. No explanatory text. 
           "description": "One sentence explaining what this option means for the research"
         }
       ],
-      "allow_multiple": true | false
+      "allow_multiple": true | false,
+      "allow_other": true | false
     }
   ] | null,
   "quick_response": "string or null"
@@ -206,7 +213,8 @@ Output:
         {"id": "web", "label": "Web", "description": "Browser-based, accessible from any device"},
         {"id": "cross-platform", "label": "Cross-platform", "description": "Available everywhere with sync across devices"}
       ],
-      "allow_multiple": true
+      "allow_multiple": true,
+      "allow_other": false
     },
     {
       "id": "target-audience",
@@ -217,7 +225,8 @@ Output:
         {"id": "creative-professionals", "label": "Creative Professionals", "description": "Writers, designers, and creators organizing inspiration"},
         {"id": "teams", "label": "Teams & Collaboration", "description": "Shared workspaces for team knowledge management"}
       ],
-      "allow_multiple": false
+      "allow_multiple": false,
+      "allow_other": true
     },
     {
       "id": "content-type",
@@ -228,7 +237,8 @@ Output:
         {"id": "visual-notes", "label": "Visual & Spatial", "description": "Diagrams, whiteboards, mind maps, and spatial canvases"},
         {"id": "all-in-one", "label": "All-in-One", "description": "Mixed media combining text, audio, images, and embeds"}
       ],
-      "allow_multiple": true
+      "allow_multiple": true,
+      "allow_other": true
     },
     {
       "id": "positioning",
@@ -239,7 +249,8 @@ Output:
         {"id": "all-in-one-workspace", "label": "All-in-One Workspace", "description": "Notes + tasks + databases + wiki in one app"},
         {"id": "specialized-niche", "label": "Specialized / Niche", "description": "Purpose-built for a specific use case or audience"}
       ],
-      "allow_multiple": false
+      "allow_multiple": false,
+      "allow_other": true
     }
   ],
   "quick_response": null
@@ -261,7 +272,8 @@ Output:
         {"id": "upskilling", "label": "Professional Upskilling", "description": "Career development, coding bootcamps, certifications"},
         {"id": "language-learning", "label": "Language Learning", "description": "English and regional language learning platforms"}
       ],
-      "allow_multiple": false
+      "allow_multiple": false,
+      "allow_other": true
     },
     {
       "id": "research-focus",
@@ -272,7 +284,8 @@ Output:
         {"id": "user-experience", "label": "User Experience", "description": "What do users love and hate about existing products?"},
         {"id": "market-trends", "label": "Market Trends", "description": "Growth trajectories, funding, and emerging opportunities"}
       ],
-      "allow_multiple": true
+      "allow_multiple": true,
+      "allow_other": false
     }
   ],
   "quick_response": null
@@ -314,7 +327,8 @@ Output:
         {"id": "market-position", "label": "Market Position", "description": "Where does Notion sit in the broader productivity market?"},
         {"id": "user-sentiment", "label": "User Sentiment", "description": "What do real users say on Reddit and review sites?"}
       ],
-      "allow_multiple": false
+      "allow_multiple": false,
+      "allow_other": false
     }
   ],
   "quick_response": null
@@ -355,6 +369,12 @@ You output a single JSON object. Nothing else — no markdown, no explanation, n
 3. Prioritize competitors that appear in MULTIPLE sources (stronger signal).
 4. Weight results toward products that match the user's stated preferences (platform, audience, positioning).
 5. For each competitor, provide: id (lowercase hyphenated slug), name, description (one sentence), url (if known), category, pricing_model.
+
+# Time Constraint — IMPORTANT
+- **Only include competitors that are actively maintained and relevant as of the last 12 months.**
+- Exclude products that have been discontinued, abandoned, or have not received updates in over 2 years.
+- Prioritize products with recent activity (new features, funding, user growth) in the past year.
+- If data is scarce for the past year, you may extend to the last 2 years, but flag any product that seems dormant.
 
 # Output Format
 
@@ -433,6 +453,12 @@ You output a single JSON object. Nothing else — no markdown, no explanation, n
 2. Use the Reddit content to extract real user sentiment — complaints, praise, recurring themes.
 3. Do NOT fabricate. If information is missing, say "Not available" or omit the field.
 4. The content field should be a concise markdown summary (2-4 paragraphs) suitable for display.
+
+# Time Constraint — IMPORTANT
+- **Prioritize information from the last 12 months** when analyzing features, pricing, and user sentiment.
+- For Reddit sentiment, focus on reviews and discussions from the past year. Older feedback may be outdated.
+- If recent data is scarce, you may use information up to 2 years old, but note in your analysis if the product appears to have limited recent activity.
+- Pricing information should reflect current pricing, not historical.
 
 # Output Format
 

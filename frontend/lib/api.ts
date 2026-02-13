@@ -10,6 +10,7 @@ import type {
   JourneyDetailResponse,
   ResearchEvent,
   SelectionRequest,
+  RefineRequest,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -204,6 +205,59 @@ export function sendSelection(
     .then(async (res) => {
       if (!res.ok) {
         const msg = `Could not send selection. (Ref: ${requestId})`;
+        onError(new Error(msg));
+        return;
+      }
+      const body = res.body;
+      if (!body) {
+        onComplete();
+        return;
+      }
+      parseSSEStream(
+        body.getReader(),
+        onEvent,
+        (err) => onError(err),
+        onComplete
+      );
+    })
+    .catch((err) => {
+      if (err.name === "AbortError") return;
+      onError(err instanceof Error ? err : new Error(String(err)));
+    });
+
+  return {
+    close: () => controller.abort(),
+  };
+}
+
+/**
+ * POST /api/research/{journeyId}/refine — refine a research step.
+ * Streams SSE events via onEvent. Uses AbortController for cancellation.
+ * Returns SSEConnection with close() to abort.
+ * Calls onError for non-200 responses before stream starts, or stream/parse errors.
+ */
+export function sendRefine(
+  journeyId: string,
+  request: RefineRequest,
+  onEvent: EventCallback,
+  onError: ErrorCallback,
+  onComplete: CompleteCallback
+): SSEConnection {
+  const controller = new AbortController();
+  const requestId = generateRequestId();
+
+  fetch(`${API_URL}/api/research/${encodeURIComponent(journeyId)}/refine`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
+    body: JSON.stringify(request),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const msg = `Could not refine research. (Ref: ${requestId})`;
         onError(new Error(msg));
         return;
       }

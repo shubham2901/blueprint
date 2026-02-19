@@ -2,20 +2,22 @@
 Blueprint Backend — Figma OAuth & Import API
 
 OAuth 2 flow: start → Figma consent → callback (token exchange) → redirect to frontend.
-Status endpoint for frontend to check connection state.
+Import: POST with Figma frame URL → fetch nodes → return design context.
 """
 
 import base64
+import re
 import secrets
 import uuid
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Cookie, Request, Response
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.config import generate_error_code, log, settings
 from app.db import get_figma_tokens, store_figma_tokens
+from app.models import FigmaImportRequest, FigmaImportResponse
 
 router = APIRouter(prefix="/api/figma", tags=["figma"])
 
@@ -178,6 +180,186 @@ async def oauth_callback(
         path="/",
     )
     return resp
+
+
+FIGMA_API_BASE = "https://api.figma.com/v1"
+GENERIC_NAMES = {"Rectangle", "Frame", "Ellipse", "Line", "Vector", "Text", "Group"}
+
+
+def parse_figma_url(url: str) -> tuple[str | None, str | None]:
+    """
+    Extract (file_key, node_id) from Figma design URL.
+    node_id returned in API format (colon, not hyphen).
+    Supports: figma.com/design/:key/:name?node-id=X-Y, figma.com/file/:key
+    """
+    from urllib.parse import urlparse, parse_qs
+
+    url = url.strip()
+    if "figma.com" not in url:
+        return None, None
+    try:
+        parsed = urlparse(url)
+        path = parsed.path
+        # Path: /design/FILE_KEY/... or /file/FILE_KEY/...
+        path_match = re.match(r"/(?:design|file)/([0-9a-zA-Z]{6,128})", path)
+        if not path_match:
+            return None, None
+        file_key = path_match.group(1)
+        # Node ID from query: node-id=X-Y
+        query = parse_qs(parsed.query)
+        node_id_raw = query.get("node-id", [None])[0]
+        node_id = node_id_raw.replace("-", ":") if node_id_raw else None
+        return file_key, node_id
+    except Exception:
+        return None, None
+
+
+def _validate_design_context(data: dict) -> list[str]:
+    """Run validation on design context. Never block — return warnings only."""
+    warnings: list[str] = []
+    nodes = data.get("nodes", {})
+    components = data.get("components", {})
+    # Check for components
+    if not components:
+        warnings.append("No components found")
+    # Check for generic layer names in nodes
+    has_generic = False
+    for node_data in nodes.values():
+        if isinstance(node_data, dict) and "document" in node_data:
+            doc = node_data.get("document", {})
+            name = doc.get("name", "")
+            if name in GENERIC_NAMES:
+                has_generic = True
+                break
+            # Check layoutMode for Auto Layout
+            if doc.get("layoutMode") is None and doc.get("type") == "FRAME":
+                pass  # Optional: "Auto Layout not detected"
+    if has_generic:
+        warnings.append("Some layers may have generic names")
+    return warnings
+
+
+@router.post("/import", response_model=FigmaImportResponse)
+async def figma_import(
+    body: FigmaImportRequest,
+    request: Request,
+    bp_session: str | None = Cookie(default=None),
+) -> FigmaImportResponse:
+    """
+    POST /api/figma/import
+
+    Import a Figma frame by URL. Requires OAuth tokens in session.
+    Returns design context (nodes, components, styles) and optional warnings.
+    """
+    # Check tokens
+    if not bp_session:
+        code = generate_error_code()
+        log("ERROR", "figma import no session", error_code=code)
+        raise HTTPException(
+            status_code=401,
+            detail={"message": "Connect with Figma to import this frame.", "error_code": code},
+        )
+    tokens = get_figma_tokens(bp_session)
+    if not tokens:
+        code = generate_error_code()
+        log("ERROR", "figma import no tokens", error_code=code)
+        raise HTTPException(
+            status_code=401,
+            detail={"message": "Connect with Figma to import this frame.", "error_code": code},
+        )
+
+    # Parse URL
+    file_key, node_id = parse_figma_url(body.url)
+    if not file_key or not node_id:
+        code = generate_error_code()
+        log("ERROR", "figma import invalid url", url=body.url[:50], error_code=code)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "That doesn't look like a valid Figma frame URL. Check the link and try again.",
+                "error_code": code,
+            },
+        )
+
+    # Fetch from Figma API
+    access_token = tokens.get("access_token", "")
+    url = f"{FIGMA_API_BASE}/files/{file_key}/nodes"
+    log("INFO", "figma import started", file_key=file_key[:8], node_id=node_id)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                url,
+                params={"ids": node_id},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "figma import fetch failed", error=str(e), error_code=code)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "We couldn't import that frame. It may be private or the link may have expired.",
+                "error_code": code,
+            },
+        )
+
+    if resp.status_code == 403:
+        code = generate_error_code()
+        log("ERROR", "figma import 403 forbidden", error_code=code)
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "We couldn't import that frame. It may be private or the link may have expired.",
+                "error_code": code,
+            },
+        )
+    if resp.status_code == 404:
+        code = generate_error_code()
+        log("ERROR", "figma import 404 not found", error_code=code)
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "We couldn't import that frame. It may be private or the link may have expired.",
+                "error_code": code,
+            },
+        )
+    if resp.status_code == 429:
+        code = generate_error_code()
+        log("ERROR", "figma import rate limited", error_code=code)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "We couldn't import that frame. Please try again in a moment.",
+                "error_code": code,
+            },
+        )
+    if resp.status_code != 200:
+        code = generate_error_code()
+        log("ERROR", "figma import failed", status=resp.status_code, body=resp.text[:200], error_code=code)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "We couldn't import that frame. It may be private or the link may have expired.",
+                "error_code": code,
+            },
+        )
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "figma import parse failed", error=str(e), error_code=code)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "We couldn't import that frame. Please try again.",
+                "error_code": code,
+            },
+        )
+
+    warnings = _validate_design_context(data)
+    log("INFO", "figma import completed", file_key=file_key[:8], warnings_count=len(warnings))
+    return FigmaImportResponse(design_context=data, warnings=warnings)
 
 
 @router.get("/status")

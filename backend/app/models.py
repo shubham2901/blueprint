@@ -32,6 +32,17 @@ class RefineRequest(BaseModel):
     feedback: Optional[str] = Field(None, description="User feedback on what to improve")
 
 
+class FigmaImportRequest(BaseModel):
+    """Request to import a Figma frame by URL."""
+    url: str = Field(..., min_length=1, description="Figma design/frame URL")
+
+
+class FigmaImportResponse(BaseModel):
+    """Response from Figma import — design context and optional warnings."""
+    design_context: dict = Field(..., description="Document subtree, nodes, components, styles")
+    warnings: list[str] = Field(default_factory=list, description="Validation warnings (never block import)")
+
+
 # -----------------------------------------------------------------------------
 # Block Models (used in SSE events and LLM responses)
 # -----------------------------------------------------------------------------

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint Build Tab - Import Frame</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#C27B66", // Cozy Sand primary (matches globals.css)
+                        "primary-dark": "#A86551",
+                        "sand-light": "#F9F7F2", // Background cream
+                        "sand-dark": "#F2EFE9", // Slightly darker sand
+                        "charcoal": "#46423F", // Warm deep brown/charcoal
+                        "charcoal-light": "#78726D", // Lighter text
+                        "stone": "#E6E2DC", // Borders/dividers
+                    },
+                    fontFamily: {
+                        "sans": ["Inter", "sans-serif"],
+                        "serif": ["Newsreader", "serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "2xl": "1.5rem", "3xl": "24px", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="font-sans bg-sand-light h-screen overflow-hidden text-charcoal flex flex-col antialiased">
+<div class="flex-1 flex w-full h-full overflow-hidden p-3 gap-3">
+<main class="flex-1 bg-white rounded-3xl border border-stone shadow-sm flex flex-col relative z-0 overflow-hidden">
+<header class="h-16 flex items-end px-12 border-b border-stone">
+<div class="flex space-x-8 h-full w-full items-end">
+<button class="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1">
+                    Research
+                </button>
+<button class="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1">
+                    Blueprint
+                </button>
+<button class="relative pb-4 flex items-center text-base font-serif italic text-charcoal px-1">
+                    Build
+                    <div class="absolute bottom-[-1px] left-0 w-full h-[3px] bg-charcoal rounded-t-full"></div>
+</button>
+</div>
+</header>
+<div class="flex-1 flex items-center justify-center p-12">
+<div class="w-full max-w-xl mx-auto flex flex-col">
+<h1 class="font-serif text-3xl text-charcoal mb-8 text-center italic">Paste your Figma frame URL to get started.</h1>
+<div class="w-full">
+<label class="block text-xs font-semibold text-charcoal-light uppercase tracking-wider mb-2 ml-1" for="figma-url">Figma frame URL</label>
+<div class="flex items-center gap-2">
+<div class="relative flex-1">
+<input class="w-full bg-sand-light border border-stone rounded-xl px-4 py-3 text-sm text-charcoal placeholder-charcoal-light/50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" id="figma-url" name="figma-url" placeholder="https://figma.com/design/..." type="text"/>
+</div>
+<button class="bg-primary hover:bg-primary-dark text-white px-8 py-3 rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-[0.98]">
+                            Import
+                        </button>
+</div>
+<p class="mt-4 text-center text-charcoal-light text-xs">
+                        Need help? <a class="underline hover:text-charcoal" href="#">Learn how to find your frame URL</a>
+</p>
+</div>
+</div>
+</div>
+</main>
+<aside class="w-[35%] min-w-[400px] max-w-[550px] bg-sand-dark rounded-2xl border border-stone flex flex-col h-full relative z-10 shadow-sm overflow-hidden">
+<header class="h-20 flex items-center justify-between px-6 shrink-0 bg-sand-dark/50 backdrop-blur-sm border-b border-stone/30">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-charcoal rounded-lg flex items-center justify-center shadow-md">
+<span class="font-serif italic text-sand-light text-sm font-bold">B</span>
+</div>
+<h2 class="font-serif font-medium text-charcoal text-lg tracking-tight">Blueprint</h2>
+</div>
+<div class="flex items-center gap-3">
+<div class="hidden sm:flex items-center gap-2 bg-white/60 px-3 py-1.5 rounded-full border border-stone/40">
+<div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] font-semibold text-charcoal-light whitespace-nowrap uppercase tracking-wider">1 session left</span>
+</div>
+<div class="flex items-center gap-2">
+<a class="text-xs font-semibold px-4 py-1.5 bg-white border border-stone text-charcoal hover:bg-stone/20 transition-all rounded-full shadow-sm" href="#">Sign up</a>
+<button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone/50 text-charcoal-light hover:text-charcoal transition-colors">
+<span class="material-symbols-outlined text-xl">history</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto px-6 py-4 flex flex-col no-scrollbar">
+<div class="mt-8 space-y-6">
+<h1 class="text-3xl font-serif italic text-charcoal leading-tight">What are you building today?</h1>
+</div>
+<div class="flex-1"></div>
+</div>
+<div class="mt-auto px-6 pb-6 pt-2">
+<div class="relative bg-white rounded-2xl shadow-sm border border-stone focus-within:border-primary/40 focus-within:shadow-md transition-all duration-300 p-4">
+<div class="flex flex-col gap-3">
+<div class="flex items-center gap-1">
+<button class="p-1.5 rounded-lg hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center" title="Attach link">
+<span class="material-symbols-outlined text-[20px]">add_link</span>
+</button>
+<button class="p-1.5 rounded-lg hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center" title="Upload image">
+<span class="material-symbols-outlined text-[20px]">image</span>
+</button>
+</div>
+<textarea class="w-full bg-transparent border-none p-0 text-sm text-charcoal placeholder-charcoal-light/60 focus:ring-0 resize-none h-24 font-sans leading-relaxed" placeholder="Ask me to build something..." rows="2"></textarea>
+<div class="flex justify-end items-center">
+<button class="flex items-center gap-2 px-6 py-2.5 bg-charcoal hover:bg-primary rounded-xl text-sand-light transition-all shadow-md group">
+<span class="text-xs font-bold tracking-widest">RUN</span>
+<span class="material-symbols-outlined text-[16px] group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex justify-between mt-3 px-2">
+<span class="text-[10px] text-charcoal-light/60 font-medium tracking-wide uppercase">Model: Blueprint v2.0 (Builder)</span>
+<span class="text-[10px] text-charcoal-light/60">Press <span class="font-bold font-mono text-charcoal/60 bg-stone/40 px-1 rounded">Return</span> to send</span>
+</div>
+</div>
+</aside>
+</div>
+
+</body></html>

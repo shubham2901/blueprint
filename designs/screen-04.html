@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Blueprint Build Tab - Canvas Variant</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#C27B66",
+                        "primary-dark": "#A86551",
+                        "sand-light": "#F9F7F2",
+                        "sand-dark": "#F2EFE9",
+                        "charcoal": "#46423F",
+                        "charcoal-light": "#78726D",
+                        "stone": "#E6E2DC",
+                        "skeleton": "#F5F5F0"
+                    },
+                    fontFamily: {
+                        "sans": ["Inter", "sans-serif"],
+                        "serif": ["Newsreader", "serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "2xl": "1.5rem", "3xl": "24px", "full": "9999px" },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(70, 66, 63, 0.05)',
+                        'inner-light': 'inset 0 2px 4px 0 rgba(255, 255, 255, 0.3)',
+                        'canvas-card': '0 10px 40px -10px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)'
+                    },
+                    backgroundImage: {
+                        'dot-grid': 'radial-gradient(#D4D4D4 1px, transparent 1px)'
+                    },
+                    backgroundSize: {
+                        'dot-grid': '20px 20px'
+                    }
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .canvas-bg {
+            background-color: #F3F4F6;background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+            background-size: 24px 24px;
+        }
+    </style>
+</head>
+<body class="font-sans bg-sand-light h-screen overflow-hidden text-charcoal flex flex-col antialiased">
+<header class="h-14 flex items-center justify-between px-6 shrink-0 z-20 border-b border-stone/60 bg-sand-light">
+<div class="flex space-x-6 h-full items-end">
+<button class="relative pb-3 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1">
+                Research
+            </button>
+<button class="relative pb-3 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1">
+                Blueprint
+            </button>
+<button class="relative pb-3 flex items-center text-base font-serif italic text-charcoal px-1">
+                Build
+                <div class="absolute bottom-[-1px] left-0 w-full h-[2px] bg-charcoal rounded-t-full"></div>
+</button>
+</div>
+<div class="flex items-center gap-4 pb-1">
+<div class="flex bg-sand-dark rounded-lg p-0.5 border border-stone/50">
+<button class="p-1.5 px-2 rounded hover:bg-white hover:shadow-sm transition-all text-charcoal flex items-center gap-1 bg-white shadow-sm">
+<span class="material-symbols-outlined text-[18px]">desktop_windows</span>
+<span class="text-xs font-medium hidden sm:inline">Desktop</span>
+</button>
+<button class="p-1.5 px-2 rounded hover:bg-white hover:shadow-sm transition-all text-charcoal-light hover:text-charcoal flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">smartphone</span>
+<span class="text-xs font-medium hidden sm:inline">Mobile</span>
+</button>
+</div>
+<div class="h-6 w-px bg-stone"></div>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-charcoal text-sand-light rounded-lg text-xs font-semibold hover:bg-primary transition-colors">
+<span class="material-symbols-outlined text-[16px]">ios_share</span>
+                Export
+            </button>
+<div class="w-8 h-8 rounded-full bg-stone overflow-hidden border border-white shadow-sm ml-2">
+<img alt="User" class="w-full h-full object-cover grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all" src="https://lh3.googleusercontent.com/aida-public/AB6AXuALQKLh4fTW15pE_Y14byn9SNDXJoPzqlg7wapEXTBl5Tm-Z06P1MVAT6oUbggieLmsFlNntsoiljHGmAFlLpqkuQGMdcS4IxgDV2AVchdBBzEQT69A__PPBW4i6Xq19FIXh_xTiEjZ0JZyKf6Iwlf7L_IiPAyMsVWvraekjPS0c7gBeuiKbUE2opdDL3D1tP3M4KmSdKVPgq2IOZDC5jGhhqlZcEVNn72R95ULbtw5Cuj8XQlNzWwfuh-LIh775Ltl4MCFgQ2mKvD6"/>
+</div>
+</div>
+</header>
+<div class="flex-1 flex w-full h-full overflow-hidden p-0 gap-0">
+<main class="flex-1 canvas-bg flex flex-col relative z-0 overflow-hidden cursor-grab active:cursor-grabbing">
+<div class="flex-1 relative overflow-auto flex items-center justify-center p-20 min-h-[1200px] min-w-[1200px]">
+<div class="flex flex-col gap-2">
+<span class="text-xs font-medium text-charcoal-light/80 ml-1 select-none">Dashboard - Desktop 1440px</span>
+<div class="w-[960px] bg-white shadow-canvas-card border border-stone/40 overflow-hidden relative group">
+<div class="h-14 border-b border-gray-100 flex items-center justify-between px-6 bg-white select-none">
+<div class="flex items-center gap-4">
+<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">F</div>
+<nav class="flex gap-4 text-xs font-medium text-gray-500">
+<span class="text-gray-900 cursor-pointer hover:text-blue-600">Dashboard</span>
+<span class="cursor-pointer hover:text-gray-900">Team</span>
+<span class="cursor-pointer hover:text-gray-900">Projects</span>
+</nav>
+</div>
+<div class="w-8 h-8 rounded-full bg-gray-200"></div>
+</div>
+<div class="p-8 bg-gray-50 min-h-[600px]">
+<div class="flex justify-between items-end mb-8">
+<div>
+<h1 class="text-2xl font-bold text-gray-900 mb-1">Financial Overview</h1>
+<p class="text-sm text-gray-500">Track your revenue and expenses.</p>
+</div>
+<button class="bg-black text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors">Download Report</button>
+</div>
+<div class="grid grid-cols-3 gap-6 mb-8">
+<div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+<p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Total Revenue</p>
+<p class="text-2xl font-bold text-gray-900">$124,500.00</p>
+<div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+<div class="h-full bg-green-500 w-[70%]"></div>
+</div>
+</div>
+<div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+<p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Active Users</p>
+<p class="text-2xl font-bold text-gray-900">1,240</p>
+<div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+<div class="h-full bg-blue-500 w-[45%]"></div>
+</div>
+</div>
+<div class="bg-white p-5 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+<p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Growth</p>
+<p class="text-2xl font-bold text-gray-900">+12.5%</p>
+<div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+<div class="h-full bg-purple-500 w-[80%]"></div>
+</div>
+</div>
+</div>
+<div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 h-64 flex flex-col">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-semibold text-gray-900">Revenue Trend</h3>
+<select class="text-xs border-gray-200 rounded-md text-gray-500 bg-gray-50 focus:ring-0 cursor-pointer">
+<option>Last 6 Months</option>
+</select>
+</div>
+<div class="flex-1 flex items-end justify-between gap-4 px-2">
+<div class="w-full bg-blue-50 rounded-t-sm h-[40%] hover:bg-blue-100 transition-colors"></div>
+<div class="w-full bg-blue-50 rounded-t-sm h-[60%] hover:bg-blue-100 transition-colors"></div>
+<div class="w-full bg-blue-50 rounded-t-sm h-[30%] hover:bg-blue-100 transition-colors"></div>
+<div class="w-full bg-blue-50 rounded-t-sm h-[75%] hover:bg-blue-100 transition-colors"></div>
+<div class="w-full bg-blue-50 rounded-t-sm h-[50%] hover:bg-blue-100 transition-colors"></div>
+<div class="w-full bg-blue-600 rounded-t-sm h-[85%] shadow-lg shadow-blue-200 hover:bg-blue-700 transition-colors"></div>
+</div>
+</div>
+</div>
+<div class="absolute -top-1 -left-1 w-2 h-2 border border-blue-500 bg-white opacity-0 group-hover:opacity-100"></div>
+<div class="absolute -top-1 -right-1 w-2 h-2 border border-blue-500 bg-white opacity-0 group-hover:opacity-100"></div>
+<div class="absolute -bottom-1 -left-1 w-2 h-2 border border-blue-500 bg-white opacity-0 group-hover:opacity-100"></div>
+<div class="absolute -bottom-1 -right-1 w-2 h-2 border border-blue-500 bg-white opacity-0 group-hover:opacity-100"></div>
+<div class="absolute inset-0 border border-blue-500 pointer-events-none opacity-0 group-hover:opacity-100"></div>
+</div>
+</div>
+</div>
+<div class="absolute bottom-6 left-6 flex bg-white rounded-lg shadow-soft border border-stone/50 p-1 gap-1 z-10">
+<button class="p-1.5 rounded hover:bg-sand-light text-charcoal-light hover:text-charcoal transition-colors">
+<span class="material-symbols-outlined text-[18px]">remove</span>
+</button>
+<span class="text-xs font-medium text-charcoal w-12 flex items-center justify-center select-none">100%</span>
+<button class="p-1.5 rounded hover:bg-sand-light text-charcoal-light hover:text-charcoal transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+</div>
+</main>
+<aside class="w-[350px] bg-sand-dark border-l border-stone flex flex-col h-full relative z-10 shadow-sm overflow-hidden">
+<header class="h-16 flex items-center justify-between px-6 shrink-0 bg-sand-dark/80 backdrop-blur-sm border-b border-stone/30">
+<div class="flex items-center gap-3">
+<div class="w-7 h-7 bg-charcoal rounded-lg flex items-center justify-center shadow-md">
+<span class="font-serif italic text-sand-light text-xs font-bold">B</span>
+</div>
+<h2 class="font-serif font-medium text-charcoal text-base tracking-tight">Assistant</h2>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-semibold text-charcoal-light uppercase tracking-wider bg-white/50 px-2 py-1 rounded-md border border-stone/20">V 2.0</span>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-6 no-scrollbar">
+<div class="flex flex-col items-end gap-1 pl-8">
+<div class="bg-white border border-stone/60 p-4 rounded-2xl rounded-tr-sm shadow-sm text-sm text-charcoal leading-relaxed">
+                        I've imported the Figma file. Can you make the dashboard cards a bit more prominent and add a chart section below them?
+                    </div>
+<span class="text-[10px] text-charcoal-light/60 font-medium">You</span>
+</div>
+<div class="flex flex-col items-start gap-1 pr-8">
+<div class="bg-[#E6E2DC]/40 border border-[#E6E2DC] p-4 rounded-2xl rounded-tl-sm text-sm text-charcoal leading-relaxed">
+<p class="mb-2">Sure thing. I've updated the layout based on the Figma frame.</p>
+<p>I emphasized the three metric cards with a slight shadow and added a revenue trend bar chart section just below. How does the spacing look?</p>
+</div>
+<span class="text-[10px] text-charcoal-light/60 font-medium flex items-center gap-1">
+                        Blueprint
+                        <span class="w-1 h-1 rounded-full bg-green-500"></span>
+</span>
+</div>
+<div class="flex flex-col items-end gap-1 pl-8">
+<div class="bg-white border border-stone/60 p-4 rounded-2xl rounded-tr-sm shadow-sm text-sm text-charcoal leading-relaxed">
+                       Better. Let's make the primary action button on the top right black instead of blue to match our brand.
+                   </div>
+<span class="text-[10px] text-charcoal-light/60 font-medium">You</span>
+</div>
+<div class="flex flex-col items-start gap-1 pr-8 opacity-70">
+<div class="bg-[#E6E2DC]/40 border border-[#E6E2DC] p-4 rounded-2xl rounded-tl-sm text-sm text-charcoal leading-relaxed flex items-center gap-2">
+<div class="flex gap-1">
+<span class="w-1.5 h-1.5 bg-charcoal/40 rounded-full animate-bounce"></span>
+<span class="w-1.5 h-1.5 bg-charcoal/40 rounded-full animate-bounce" style="animation-delay: 0.1s"></span>
+<span class="w-1.5 h-1.5 bg-charcoal/40 rounded-full animate-bounce" style="animation-delay: 0.2s"></span>
+</div>
+<span class="text-xs font-medium text-charcoal-light">Updating styles...</span>
+</div>
+</div>
+</div>
+<div class="mt-auto px-4 pb-4 pt-2">
+<div class="relative bg-white rounded-2xl shadow-soft border border-stone focus-within:border-primary/40 focus-within:shadow-md transition-all duration-300 p-3">
+<div class="flex flex-col gap-2">
+<textarea class="w-full bg-transparent border-none p-1 text-sm text-charcoal placeholder-charcoal-light/60 focus:ring-0 resize-none h-16 font-sans leading-relaxed" placeholder="Describe changes..." rows="2"></textarea>
+<div class="flex justify-between items-center pt-1 border-t border-stone/20">
+<div class="flex items-center gap-1">
+<button class="p-1.5 rounded-lg hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">add_circle</span>
+</button>
+<button class="p-1.5 rounded-lg hover:bg-sand-dark text-charcoal-light hover:text-primary transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">mic</span>
+</button>
+</div>
+<button class="flex items-center gap-2 px-4 py-1.5 bg-charcoal hover:bg-primary rounded-lg text-sand-light transition-all shadow-md group">
+<span class="material-symbols-outlined text-[18px] group-hover:translate-x-0.5 transition-transform">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex justify-center mt-2">
+<span class="text-[10px] text-charcoal-light/50 font-medium tracking-wide uppercase">AI can make mistakes. Review generated code.</span>
+</div>
+</div>
+</aside>
+<div class="w-14 flex flex-col items-center py-4 gap-4 border-l border-stone/20 shrink-0 bg-white z-20 shadow-sm">
+<button class="w-10 h-10 rounded-lg hover:bg-stone/50 text-charcoal-light hover:text-charcoal transition-colors flex items-center justify-center tooltip-trigger group relative" title="History">
+<span class="material-symbols-outlined text-[20px]">history</span>
+<span class="absolute right-12 bg-charcoal text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">History</span>
+</button>
+<button class="w-10 h-10 rounded-lg hover:bg-stone/50 text-charcoal-light hover:text-charcoal transition-colors flex items-center justify-center group relative" title="Saved Components">
+<span class="material-symbols-outlined text-[20px]">grid_view</span>
+<span class="absolute right-12 bg-charcoal text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Components</span>
+</button>
+<button class="w-10 h-10 rounded-lg hover:bg-stone/50 text-charcoal-light hover:text-charcoal transition-colors flex items-center justify-center group relative" title="Settings">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="absolute right-12 bg-charcoal text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Settings</span>
+</button>
+</div>
+</div>
+</body></html>

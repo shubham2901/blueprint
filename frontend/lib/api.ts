@@ -15,6 +15,65 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// ──────────────────────────────────────────────────────
+// Figma API
+// ──────────────────────────────────────────────────────
+
+export interface FigmaStatusResponse {
+  connected: boolean;
+}
+
+export interface FigmaImportResponse {
+  design_context: Record<string, unknown>;
+  warnings: string[];
+}
+
+/**
+ * GET /api/figma/status — check if user has completed Figma OAuth.
+ * Uses credentials: include for session cookie.
+ */
+export async function getFigmaStatus(): Promise<FigmaStatusResponse> {
+  const requestId = generateRequestId();
+  const res = await fetch(`${API_URL}/api/figma/status`, {
+    method: "GET",
+    credentials: "include",
+    headers: { "X-Request-Id": requestId },
+  });
+  if (!res.ok) {
+    return { connected: false };
+  }
+  return res.json() as Promise<FigmaStatusResponse>;
+}
+
+/**
+ * POST /api/figma/import — import a Figma frame by URL.
+ * Returns design_context and warnings. Throws with friendly message + (Ref: BP-XXX).
+ */
+export async function importFigmaFrame(url: string): Promise<FigmaImportResponse> {
+  const requestId = generateRequestId();
+  const res = await fetch(`${API_URL}/api/figma/import`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
+    body: JSON.stringify({ url }),
+  });
+  const body = await res.json().catch(() => ({}));
+  const errorCode = body?.error_code || requestId;
+  if (res.status === 401) {
+    throw new Error(`Connect with Figma to import this frame. (Ref: ${errorCode})`);
+  }
+  if (res.status === 400) {
+    throw new Error(`That doesn't look like a valid Figma frame URL. Check the link and try again. (Ref: ${errorCode})`);
+  }
+  if (!res.ok) {
+    throw new Error(`We couldn't import that frame. It may be private or the link may have expired. (Ref: ${errorCode})`);
+  }
+  return body as FigmaImportResponse;
+}
+
 function generateRequestId(): string {
   return `BP-${crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 }

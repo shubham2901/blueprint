@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BuildLanding } from "@/app/components/BuildLanding";
 import { PasteUrlView } from "@/app/components/PasteUrlView";
+import { ImportingView } from "@/app/components/ImportingView";
+import { getFigmaStatus, importFigmaFrame } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -12,18 +15,55 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
  *
  * Cursor-like layout: main ~65%, sidebar ~35%.
  * Tabs: Research | Blueprint | Build (Build active).
- * Main area: BuildLanding or PasteUrlView (01-02).
+ * Main area: BuildLanding | PasteUrlView | ImportingView | success/error.
  */
 
-type ViewMode = "landing" | "paste";
+type ViewMode = "landing" | "paste" | "importing" | "success" | "error";
 
-export default function BuildShellPage() {
+function BuildShellContent() {
+  const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("landing");
   const [figmaUrl, setFigmaUrl] = useState("");
   const [figmaConnected, setFigmaConnected] = useState(false);
+  const [designContext, setDesignContext] = useState<Record<string, unknown> | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // OAuth return: ?figma_connected=1 or ?figma_error=1&error_code=BP-XXX
+  useEffect(() => {
+    const connected = searchParams.get("figma_connected");
+    const error = searchParams.get("figma_error");
+    const errorCode = searchParams.get("error_code");
+    if (connected === "1") {
+      setFigmaConnected(true);
+      window.history.replaceState(null, "", "/");
+    }
+    if (error === "1" && errorCode) {
+      setImportError(`We couldn't connect to Figma. Please try again. (Ref: ${errorCode})`);
+      window.history.replaceState(null, "", "/");
+    }
+  }, [searchParams]);
+
+  // Check Figma status on mount (handles refresh)
+  useEffect(() => {
+    getFigmaStatus().then((res) => setFigmaConnected(res.connected));
+  }, []);
 
   const handleConnectClick = () => {
     window.location.href = `${API_URL}/api/figma/oauth/start`;
+  };
+
+  const handleImportClick = async () => {
+    if (!figmaUrl.trim() || !figmaConnected) return;
+    setViewMode("importing");
+    setImportError(null);
+    try {
+      const res = await importFigmaFrame(figmaUrl.trim());
+      setDesignContext(res.design_context);
+      setViewMode("success");
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      setViewMode("error");
+    }
   };
 
   return (
@@ -54,20 +94,60 @@ export default function BuildShellPage() {
           </div>
         </header>
         <div className="flex-1 flex items-center justify-center p-12 min-h-0 overflow-auto">
-          {viewMode === "landing" ? (
+          {viewMode === "landing" && (
             <BuildLanding
               onConnectClick={handleConnectClick}
               onPasteUrlClick={() => setViewMode("paste")}
             />
-          ) : (
+          )}
+          {viewMode === "paste" && (
             <PasteUrlView
               figmaUrl={figmaUrl}
               onUrlChange={setFigmaUrl}
-              onImportClick={() => {}}
+              onImportClick={handleImportClick}
               figmaConnected={figmaConnected}
               onConnectClick={handleConnectClick}
               onBackClick={() => setViewMode("landing")}
             />
+          )}
+          {viewMode === "importing" && <ImportingView figmaUrl={figmaUrl} />}
+          {viewMode === "success" && (
+            <div className="text-center max-w-lg mx-auto">
+              <h2 className="font-serif text-2xl text-charcoal mb-4">Frame imported</h2>
+              <p className="text-charcoal-light text-sm mb-6">
+                Design context loaded. Code generation coming in Phase 2.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("paste");
+                  setDesignContext(null);
+                }}
+                className="text-charcoal-light text-sm hover:text-charcoal hover:underline"
+              >
+                Import another frame
+              </button>
+            </div>
+          )}
+          {viewMode === "error" && (
+            <div className="text-center max-w-lg mx-auto">
+              <p className="text-charcoal mb-4">{importError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("paste");
+                  setImportError(null);
+                }}
+                className="text-terracotta hover:underline text-sm"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          {importError && viewMode !== "error" && (
+            <div className="fixed top-4 right-4 bg-white border border-stone rounded-lg shadow-lg px-4 py-3 text-sm text-charcoal max-w-md">
+              {importError}
+            </div>
           )}
         </div>
       </main>
@@ -129,5 +209,13 @@ export default function BuildShellPage() {
         </div>
       </aside>
     </div>
+  );
+}
+
+export default function BuildShellPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-sand-light">Loading...</div>}>
+      <BuildShellContent />
+    </Suspense>
   );
 }

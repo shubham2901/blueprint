@@ -1,16 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { BuildLanding } from "@/app/components/BuildLanding";
+import { PasteUrlView } from "@/app/components/PasteUrlView";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Build Shell — Phase 1
  *
  * Cursor-like layout: main ~65%, sidebar ~35%.
  * Tabs: Research | Blueprint | Build (Build active).
- * Main area placeholder for landing (01-02); sidebar has chat placeholder.
+ * Main area: BuildLanding or PasteUrlView (01-02).
  */
 
+type ViewMode = "landing" | "paste";
+
 export default function BuildShellPage() {
+  const [viewMode, setViewMode] = useState<ViewMode>("landing");
+  const [figmaUrl, setFigmaUrl] = useState("");
+  const [figmaConnected, setFigmaConnected] = useState(false);
+
+  const handleConnectClick = () => {
+    window.location.href = `${API_URL}/api/figma/oauth/start`;
+  };
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-sand-light p-3 gap-3">
       {/* Main area (~65%) */}
@@ -38,11 +53,22 @@ export default function BuildShellPage() {
             </button>
           </div>
         </header>
-        <div className="flex-1 flex items-center justify-center p-12 min-h-0">
-          {/* Placeholder — 01-02 adds BuildLanding + PasteUrlView */}
-          <div className="text-center text-charcoal-light font-sans text-sm">
-            Build workspace
-          </div>
+        <div className="flex-1 flex items-center justify-center p-12 min-h-0 overflow-auto">
+          {viewMode === "landing" ? (
+            <BuildLanding
+              onConnectClick={handleConnectClick}
+              onPasteUrlClick={() => setViewMode("paste")}
+            />
+          ) : (
+            <PasteUrlView
+              figmaUrl={figmaUrl}
+              onUrlChange={setFigmaUrl}
+              onImportClick={() => {}}
+              figmaConnected={figmaConnected}
+              onConnectClick={handleConnectClick}
+              onBackClick={() => setViewMode("landing")}
+            />
+          )}
         </div>
       </main>
 

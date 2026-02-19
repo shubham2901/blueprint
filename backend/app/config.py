@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # App
     environment: str = "development"  # "development" | "production"
     cors_origins: str = "http://localhost:3000"  # Comma-separated for multiple origins
+    frontend_url: str = "http://localhost:3000"   # OAuth redirect target (NEXT_PUBLIC_APP_URL)
+
+    # Figma OAuth
+    figma_client_id: str = ""
+    figma_client_secret: str = ""
+    figma_redirect_uri: str = "http://localhost:8000/api/figma/oauth/callback"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

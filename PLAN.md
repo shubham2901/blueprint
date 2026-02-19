@@ -336,6 +336,15 @@ CREATE TABLE user_choices_log (
     options_selected JSONB,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Figma OAuth tokens (session-scoped, V0 anonymous)
+CREATE TABLE figma_tokens (
+    session_id TEXT PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
 ---

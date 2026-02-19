@@ -407,6 +407,68 @@ async def update_llm_state(provider: str, reason: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Figma OAuth Tokens
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def store_figma_tokens(
+    session_id: str,
+    access_token: str,
+    refresh_token: str | None = None,
+    expires_at: datetime | None = None,
+) -> None:
+    """
+    Upsert Figma tokens for a session.
+    Used after OAuth callback token exchange.
+    """
+    try:
+        sb = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        data = {
+            "session_id": session_id,
+            "access_token": access_token,
+            "refresh_token": refresh_token or None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "created_at": now,
+        }
+        sb.table("figma_tokens").upsert(data, on_conflict="session_id").execute()
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "db write failed", operation="store_figma_tokens", error=str(e), error_code=code)
+
+
+def get_figma_tokens(session_id: str) -> Optional[dict]:
+    """
+    Get Figma tokens for a session.
+    Returns None if not found or expired (expires_at in past).
+    """
+    try:
+        sb = get_supabase()
+        response = (
+            sb.table("figma_tokens")
+            .select("*")
+            .eq("session_id", session_id)
+            .maybe_single()
+            .execute()
+        )
+        if response is None or not response.data:
+            return None
+        row = dict(response.data)
+        expires_at = row.get("expires_at")
+        if expires_at:
+            exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00")) if isinstance(expires_at, str) else expires_at
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) >= exp_dt:
+                return None
+        return row
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "db read failed", operation="get_figma_tokens", error=str(e), error_code=code)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # User Choice Logging (fire-and-forget)
 # ─────────────────────────────────────────────────────────────────────────────
 

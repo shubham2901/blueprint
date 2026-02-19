@@ -22,12 +22,17 @@
 @theme inline {
   /* ── Blueprint Colors ───────────────────────────────── */
   --color-sand: #F9F7F2;
-  --color-workspace: #FFFFFF;
+  --color-sand-light: #F9F7F2;
+  --color-sand-dark: #F2EFE9;
+  --color-stone: #E6E2DC;
   --color-charcoal: #1F1F1F;
+  --color-charcoal-light: #78726D;
+  --color-workspace: #FFFFFF;
   --color-secondary: #737373;
   --color-placeholder: #A3A3A3;
   --color-terracotta: var(--primary-hex);
   --color-terracotta-light: var(--primary-light-rgba);
+  --color-primary-dark: var(--primary-dark-hex);
   --color-border: #E5E5E5;
   --color-success: #5C8A5E;
   --color-error: #C45C5C;

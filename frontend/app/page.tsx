@@ -1,99 +1,107 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-const SUGGESTED_PILLS = [
-  { label: "Build a product", prefill: "I want to build a " },
-  { label: "Explore a market", prefill: "Tell me about " },
-  { label: "Competitor deep dive", prefill: "Tell me about " },
-  { label: "Find my niche", prefill: "I want to build something in the  space" },
-] as const;
+/**
+ * Build Shell — Phase 1
+ *
+ * Cursor-like layout: main ~65%, sidebar ~35%.
+ * Tabs: Research | Blueprint | Build (Build active).
+ * Main area placeholder for landing (01-02); sidebar has chat placeholder.
+ */
 
-export default function LandingPage() {
-  const [prompt, setPrompt] = useState("");
-  const [isNavigating, setIsNavigating] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const router = useRouter();
-
-  const handleSubmit = () => {
-    const trimmed = prompt.trim();
-    if (!trimmed || isNavigating) return;
-    setIsNavigating(true);
-    // Store prompt in sessionStorage instead of URL to avoid length limits
-    sessionStorage.setItem("bp_pending_prompt", trimmed);
-    router.push("/explore/new");
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
-  const handlePillClick = (prefill: string) => {
-    setPrompt(prefill);
-    inputRef.current?.focus();
-  };
-
+export default function BuildShellPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-sand px-4">
-      <div className="w-full max-w-[640px] flex flex-col items-center gap-8">
-        {/* Logo */}
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-charcoal">
-          <span className="font-sans text-sm font-bold text-workspace">B</span>
-        </div>
-
-        {/* Heading */}
-        <div className="text-center">
-          <h1 className="font-serif text-[28px] leading-tight text-charcoal md:text-[32px]">
-            What would you like to build?
-          </h1>
-          <p className="mx-auto mt-3 max-w-[480px] font-sans text-[15px] leading-relaxed text-secondary">
-            Describe a product idea or market you&apos;re curious about.
-            Blueprint will map the competitive landscape, find gaps, and help
-            you define what to build.
-          </p>
-        </div>
-
-        {/* Prompt Input */}
-        <div className="relative w-full rounded-input border border-border bg-workspace shadow-subtle">
-          <textarea
-            ref={inputRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="e.g., I want to build a note-taking app for students..."
-            disabled={isNavigating}
-            rows={3}
-            className="w-full resize-none rounded-input bg-transparent px-4 pt-4 pb-12 font-sans text-[15px] text-charcoal placeholder:text-placeholder focus:outline-none disabled:opacity-50"
-          />
-          <div className="absolute right-3 bottom-3">
-            <button
-              onClick={handleSubmit}
-              disabled={!prompt.trim() || isNavigating}
-              className="rounded-button bg-charcoal px-4 py-1.5 font-sans text-[13px] font-medium text-workspace transition-opacity hover:opacity-90 disabled:opacity-40"
+    <div className="flex h-screen w-full overflow-hidden bg-sand-light p-3 gap-3">
+      {/* Main area (~65%) */}
+      <main className="flex-1 flex flex-col bg-white rounded-3xl border border-stone shadow-sm overflow-hidden min-w-0">
+        <header className="h-16 flex items-end px-12 border-b border-stone shrink-0">
+          <div className="flex space-x-8 h-full w-full items-end">
+            <Link
+              href="/research"
+              className="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1"
             >
-              {isNavigating ? "Starting..." : "RUN"}
+              Research
+            </Link>
+            <Link
+              href="/research"
+              className="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1"
+            >
+              Blueprint
+            </Link>
+            <button
+              type="button"
+              className="relative pb-4 flex items-center text-base font-serif italic text-charcoal px-1 cursor-default"
+            >
+              Build
+              <div className="absolute bottom-[-1px] left-0 w-full h-[3px] bg-charcoal rounded-t-full" />
             </button>
           </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-12 min-h-0">
+          {/* Placeholder — 01-02 adds BuildLanding + PasteUrlView */}
+          <div className="text-center text-charcoal-light font-sans text-sm">
+            Build workspace
+          </div>
         </div>
+      </main>
 
-        {/* Suggested Research Pills */}
-        <div className="flex flex-wrap justify-center gap-2">
-          {SUGGESTED_PILLS.map((pill) => (
+      {/* Sidebar (~35%) */}
+      <aside className="w-[35%] min-w-[400px] max-w-[550px] bg-sand-dark rounded-2xl border border-stone flex flex-col h-full shadow-sm overflow-hidden shrink-0">
+        <header className="h-20 flex items-center justify-between px-6 shrink-0 bg-sand-dark/50 backdrop-blur-sm border-b border-stone/30">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-charcoal rounded-lg flex items-center justify-center shadow-md">
+              <span className="font-serif italic text-sand-light text-sm font-bold">
+                B
+              </span>
+            </div>
+            <h2 className="font-serif font-medium text-charcoal text-lg tracking-tight">
+              Blueprint
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 bg-white/60 px-3 py-1.5 rounded-full border border-stone/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-terracotta animate-pulse" />
+              <span className="text-[10px] font-semibold text-charcoal-light whitespace-nowrap uppercase tracking-wider">
+                1 session left
+              </span>
+            </div>
             <button
-              key={pill.label}
-              onClick={() => handlePillClick(pill.prefill)}
-              disabled={isNavigating}
-              className="rounded-chip border border-border bg-workspace px-4 py-1.5 font-sans text-[13px] text-secondary transition-colors hover:bg-sand disabled:opacity-50"
+              type="button"
+              className="text-xs font-semibold px-4 py-1.5 bg-white border border-stone text-charcoal hover:bg-stone/20 transition-all rounded-full shadow-sm"
             >
-              {pill.label}
+              Sign up
             </button>
-          ))}
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col">
+          <div className="mt-8 space-y-6">
+            <h1 className="text-3xl font-serif italic text-charcoal leading-tight">
+              What are you building today?
+            </h1>
+          </div>
+          <div className="flex-1" />
         </div>
-      </div>
-    </main>
+        <div className="mt-auto px-6 pb-6 pt-2 shrink-0">
+          <div className="relative bg-white rounded-2xl shadow-sm border border-stone focus-within:border-terracotta/40 focus-within:shadow-md transition-all duration-300 p-4">
+            <textarea
+              placeholder="Ask me to build something..."
+              rows={2}
+              className="w-full bg-transparent border-none p-0 text-sm text-charcoal placeholder-charcoal-light/60 focus:ring-0 resize-none font-sans leading-relaxed"
+              disabled
+            />
+            <div className="flex justify-end items-center mt-2">
+              <button
+                type="button"
+                disabled
+                className="flex items-center gap-2 px-6 py-2.5 bg-charcoal hover:bg-primary-dark rounded-xl text-sand-light transition-all shadow-md opacity-60 cursor-not-allowed"
+              >
+                <span className="text-xs font-bold tracking-widest">RUN</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
   );
 }

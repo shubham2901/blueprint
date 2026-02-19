@@ -209,13 +209,8 @@ export default function ExplorePage() {
       dispatch({ type: "SSE_EVENT", event });
 
       // Replace URL when journey is created.
-      // IMPORTANT: use window.history.replaceState (not router.replace) so
-      // Next.js does NOT treat this as a navigation. router.replace would
-      // change journeyIdParam, re-trigger the useEffect, and its cleanup
-      // would abort the SSE stream mid-flight — killing the connection
-      // before clarification questions arrive.
       if (event.type === "journey_started" && journeyIdParam === "new") {
-        window.history.replaceState(null, "", `/explore/${event.journey_id}`);
+        window.history.replaceState(null, "", `/research/explore/${event.journey_id}`);
       }
     },
     [journeyIdParam],
@@ -230,27 +225,21 @@ export default function ExplorePage() {
     sseRef.current = null;
   }, []);
 
-  // ── Redirect to homepage on page reload (no restorable state in V0) ──
+  // ── Redirect to research landing on page reload (no restorable state in V0) ──
   useEffect(() => {
-    // If this is NOT the "new" route, the user has reloaded an existing
-    // journey page.  V0 cannot restore SSE state, so redirect to home.
     if (journeyIdParam !== "new") {
-      router.replace("/");
+      router.replace("/research");
       return;
     }
 
-    // For the "new" route: if there is no prompt available the user has
-    // either refreshed (sessionStorage was already cleared) or navigated
-    // here directly without a prompt.  Redirect to homepage.
     if (!hasStartedRef.current) {
       const prompt =
         sessionStorage.getItem("bp_pending_prompt") ||
         new URLSearchParams(window.location.search).get("prompt");
       if (!prompt) {
-        router.replace("/");
+        router.replace("/research");
         return;
       }
-      // Clear it so a page refresh doesn't re-trigger
       sessionStorage.removeItem("bp_pending_prompt");
       hasStartedRef.current = true;
       dispatch({ type: "SET_PHASE", phase: "streaming" });
@@ -261,16 +250,10 @@ export default function ExplorePage() {
         handleComplete,
       );
     }
-    // NOTE: no cleanup return here — SSE cleanup lives in the effect below.
   }, [journeyIdParam, router, handleEvent, handleError, handleComplete]);
 
   // ── StrictMode-safe SSE cleanup ───────────────────────
-  // React StrictMode (dev only) unmounts/remounts components, which would
-  // abort the SSE fetch mid-flight. We defer the close by a tick: if the
-  // component remounts immediately (StrictMode), the next mount cancels
-  // the pending cleanup. On real unmount the timer fires and closes SSE.
   useEffect(() => {
-    // On (re)mount: cancel any pending deferred cleanup from StrictMode
     if (cleanupTimerRef.current) {
       clearTimeout(cleanupTimerRef.current);
       cleanupTimerRef.current = null;
@@ -342,9 +325,8 @@ export default function ExplorePage() {
 
   const handleNewPrompt = useCallback(
     (prompt: string) => {
-      // Store prompt in sessionStorage and navigate
       sessionStorage.setItem("bp_pending_prompt", prompt);
-      router.push("/explore/new");
+      router.push("/research/explore/new");
     },
     [router],
   );
@@ -375,7 +357,6 @@ export default function ExplorePage() {
 
   return (
     <main className="flex h-screen bg-sand p-3 gap-3">
-      {/* Left: Workspace (~70%) */}
       <div className="flex-[7] min-w-0">
         <Workspace
           blocks={state.blocks}
@@ -394,13 +375,12 @@ export default function ExplorePage() {
             dispatch({ type: "SET_SELECTED_PROBLEMS", ids })
           }
           onDefineProblems={handleDefineProblems}
-          onStartNew={() => router.push("/")}
+          onStartNew={() => router.push("/research")}
           onRefine={handleRefine}
           isRefining={isRefining}
         />
       </div>
 
-      {/* Right: Sidebar (~30%) */}
       <div className="flex-[3] min-w-[320px]">
         <Sidebar
           researchState={state}

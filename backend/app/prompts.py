@@ -828,7 +828,80 @@ def build_problem_statement_prompt(selected_gaps: list[dict], context: dict) -> 
 
 
 # -----------------------------------------------------------------------------
-# 7. build_fix_json_prompt
+# 7. build_refine_prompt
+# -----------------------------------------------------------------------------
+
+REFINE_PROMPT = """
+# Role
+You are the "Refiner" module for Blueprint, a product research tool. You receive previous research output along with user feedback, and your job is to improve, expand, or adjust the analysis based on that feedback.
+
+You output a single JSON object matching the SAME schema as the original output. Nothing else — no markdown, no explanation, no text before or after the JSON.
+
+# Task
+
+1. Review the ORIGINAL OUTPUT below carefully.
+2. Read the USER FEEDBACK to understand what they want changed.
+3. Generate an IMPROVED version that addresses the feedback while maintaining quality.
+
+# Feedback Interpretation Guidelines
+
+Common feedback patterns and how to handle them:
+
+| Feedback Pattern | Action |
+|-----------------|--------|
+| "More X" (e.g., "more competitors", "more gaps") | Add additional items while keeping existing quality ones |
+| "Less X" or "Focus on Y" | Filter/narrow results to match the constraint |
+| "Missing X" or "What about X?" | Specifically include the mentioned item if relevant |
+| "Wrong/incorrect X" | Correct the specific issue mentioned |
+| "More detail on X" | Expand the description/analysis for that item |
+| "Simpler" or "Too complex" | Reduce complexity, use clearer language |
+
+# Quality Rules
+
+- **Preserve what works**: Don't remove good content just to add new content. Expand, don't replace.
+- **Address the feedback directly**: If the user asked for something specific, it MUST be in the output.
+- **Maintain evidence grounding**: New additions must still be grounded in provided data. Do not fabricate.
+- **Keep the same schema**: Output must match the exact same JSON structure as the original.
+- **Improve, don't regress**: The refined output should be strictly better than the original.
+
+# Output Format
+
+Return ONLY a valid JSON object matching the original output's schema. No markdown code fences. No explanatory text.
+"""
+
+
+def build_refine_prompt(
+    original_output: dict,
+    output_schema_name: str,
+    user_feedback: str,
+    additional_context: str = "",
+) -> list[dict]:
+    """
+    Build prompt to refine/improve previous research output based on user feedback.
+
+    This is a generic refinement prompt that works with any research output type
+    (competitors, profiles, gap analysis, problem statement).
+
+    Args:
+        original_output: The JSON dict of the previous output to refine
+        output_schema_name: Name of the output schema (e.g., "CompetitorList", "GapAnalysis")
+        user_feedback: What the user wants changed/improved
+        additional_context: Optional extra context (e.g., domain, clarification answers)
+
+    Returns:
+        [{"role": "user", "content": "..."}]
+    """
+    parts = [REFINE_PROMPT]
+    parts.append(f"\n\n# Output Schema\n{output_schema_name}")
+    parts.append(f"\n\n# Original Output\n{json.dumps(original_output, indent=2)}")
+    parts.append(f"\n\n# User Feedback\n{user_feedback}")
+    if additional_context:
+        parts.append(f"\n\n# Additional Context\n{additional_context}")
+    return [{"role": "user", "content": "".join(parts)}]
+
+
+# -----------------------------------------------------------------------------
+# 8. build_fix_json_prompt
 # -----------------------------------------------------------------------------
 
 
@@ -877,6 +950,48 @@ OFF_TOPIC_RESPONSES = [
     "I specialize in product and market research. Try me with a product idea or industry you're curious about!",
     "I can't help with that, but I'm great at competitor research and market analysis. What would you like to build?",
 ]
+
+
+# -----------------------------------------------------------------------------
+# 9. build_design_to_code_prompt
+# -----------------------------------------------------------------------------
+
+# TODO: Replace with founder-authored prompt — implement wiring only.
+DESIGN_TO_CODE_PROMPT_TEMPLATE = """
+# Role
+You are a design-to-code expert. Generate React + Tailwind code that matches the provided design with near pixel-perfect fidelity.
+
+# Constraints
+- Use Tailwind CSS only — no inline styles except where Tailwind cannot express the value
+- Functional components only — no class components
+- Preserve exact text content from the design — no lorem ipsum
+- Use inline SVG for icons when provided in the context
+- Use placeholder.com for images if needed, with correct width and height
+- Output a single React component with default export
+- Output valid JSX that can be parsed by esbuild
+
+# Output Format
+Return ONLY the React component code. No markdown code fences, no explanation text before or after.
+Single default export. Valid JSX.
+
+# Design Context
+{context_json}
+"""
+
+
+def build_design_to_code_prompt(transformed_context: dict) -> str:
+    """
+    Build the design-to-code prompt for vision LLM.
+
+    Args:
+        transformed_context: Compact design context from transform_design_context().
+            May include frame, tree, components, styles, and optionally icons dict.
+
+    Returns:
+        Full prompt string for use in call_llm_vision.
+    """
+    context_json = json.dumps(transformed_context, indent=2)
+    return DESIGN_TO_CODE_PROMPT_TEMPLATE.format(context_json=context_json)
 
 
 def get_quick_response(intent_type: str) -> str:

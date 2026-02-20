@@ -47,7 +47,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — DB schema + models (prototype_sessions, CRUD)
 - [x] 02-02-PLAN.md — Design context transformer (Figma → LLM-ready)
-- [ ] 02-03-PLAN.md — LLM vision support (call_llm_vision, Gemini 2.5 Pro)
+- [x] 02-03-PLAN.md — LLM vision support (call_llm_vision, Gemini 2.5 Pro)
 - [ ] 02-04-PLAN.md — Code generation endpoint + prompt
 - [ ] 02-05-PLAN.md — Frontend: generating state + success + Regenerate
 - [ ] 02-06-PLAN.md — Tests: unit (transformer, vision, fences) + integration (API endpoints)
@@ -91,7 +91,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Shell + Landing + Figma Import | 5/5 | Complete | 2025-02-19 |
-| 2. Code Generation | 2/6 | In Progress|  |
+| 2. Code Generation | 3/6 | In Progress|  |
 | 3. Sandpack Preview | 0/0 | Not started | - |
 | 4. Chat Iteration | 0/0 | Not started | - |
 | 5. Session Persistence | 0/0 | Not started | - |

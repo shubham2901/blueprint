@@ -14,7 +14,7 @@ import litellm
 from pydantic import BaseModel, ValidationError
 
 from app import db
-from app.config import LLM_CONFIG, generate_error_code, log
+from app.config import CODE_GEN_MODEL, LLM_CONFIG, generate_error_code, log
 
 # ── Suppress noisy litellm warnings ──────────────────────────────────────────
 # litellm internally creates VertexLLM coroutines that sometimes go un-awaited
@@ -329,6 +329,115 @@ async def call_llm_structured(
             )
 
 
+async def call_llm_vision(
+    messages: list[dict],
+    image_base64: str | None,
+    session_id: str | None = None,
+) -> str:
+    """
+    Call the vision-capable LLM for design-to-code generation.
+
+    Accepts base64-encoded image (caller fetches thumbnail and encodes).
+    Prepends image to the first user message as multimodal content.
+    Uses CODE_GEN_MODEL only — no fallback chain. No response_format
+    (Gemini JSON mode conflicts with vision; code output is plain text).
+
+    Args:
+        messages: Chat messages (system + user; no injection here).
+        image_base64: Base64-encoded PNG, or None for text-only.
+        session_id: Optional session ID for logging correlation.
+
+    Returns:
+        Raw response content string from the LLM.
+
+    Raises:
+        LLMError: If the vision call fails.
+    """
+    # Build messages with optional image prepended to first user message
+    final_messages = [dict(m) for m in messages]
+    if image_base64:
+        for i, msg in enumerate(final_messages):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    content = [{"type": "text", "text": content}]
+                else:
+                    content = list(content)
+                content.insert(
+                    0,
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image_base64}"},
+                    },
+                )
+                final_messages[i] = {**msg, "content": content}
+                break
+
+    log(
+        "INFO",
+        "llm vision call started",
+        session_id=session_id,
+        provider=CODE_GEN_MODEL,
+        prompt_type="design_to_code",
+        has_image=bool(image_base64),
+    )
+    start = time.perf_counter()
+
+    try:
+        response = await litellm.acompletion(
+            model=CODE_GEN_MODEL,
+            messages=final_messages,
+            temperature=0.3,
+            max_tokens=8000,
+            timeout=LLM_CALL_TIMEOUT_SECONDS,
+        )
+        duration_ms = int((time.perf_counter() - start) * 1000)
+
+        content = ""
+        if response.choices:
+            msg = response.choices[0].message
+            if msg.content:
+                content = msg.content
+            elif hasattr(msg, "reasoning_content") and msg.reasoning_content:
+                content = msg.reasoning_content
+
+        if not content:
+            log(
+                "WARN",
+                "llm vision returned empty content",
+                session_id=session_id,
+                provider=CODE_GEN_MODEL,
+            )
+            return ""
+
+        tokens_used = None
+        if hasattr(response, "usage") and response.usage:
+            tokens_used = getattr(response.usage, "total_tokens", None)
+
+        log(
+            "INFO",
+            "llm vision call succeeded",
+            session_id=session_id,
+            provider=CODE_GEN_MODEL,
+            duration_ms=duration_ms,
+            tokens_used=tokens_used,
+            output_length=len(content),
+        )
+        return content
+
+    except Exception as e:
+        code = generate_error_code()
+        log(
+            "ERROR",
+            "llm vision call failed",
+            session_id=session_id,
+            provider=CODE_GEN_MODEL,
+            error=str(e),
+            error_code=code,
+        )
+        raise LLMError(f"Vision LLM failed: {e}") from e
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Initialization & Fallback
 # ─────────────────────────────────────────────────────────────────────────────
@@ -376,3 +485,28 @@ def _strip_code_fences(text: str) -> str:
     if match:
         return match.group(1).strip()
     return stripped
+
+
+def strip_code_fences(text: str) -> str:
+    """
+    Extract JSX/TSX/JavaScript from markdown code fences.
+
+    Used when LLM returns markdown-wrapped code (e.g. ```jsx\n...\n```).
+    Returns the first match or the original text if no fence found.
+
+    Args:
+        text: Raw LLM output that may contain code fences.
+
+    Returns:
+        Extracted code content or original text.
+    """
+    if not text or not isinstance(text, str):
+        return text
+    match = re.search(
+        r"```(?:jsx|tsx|javascript)?\s*\n(.*?)```",
+        text.strip(),
+        re.DOTALL,
+    )
+    if match:
+        return match.group(1).strip()
+    return text.strip()

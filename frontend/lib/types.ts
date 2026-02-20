@@ -248,6 +248,39 @@ export interface RefineRequest {
 }
 
 // ──────────────────────────────────────────────────────
+// Code Generation Types (prototype sessions)
+// ──────────────────────────────────────────────────────
+
+export interface CodeGenerateRequest {
+  design_context: Record<string, unknown>;
+  thumbnail_url?: string;
+  frame_name?: string;
+  frame_width?: number;
+  frame_height?: number;
+}
+
+export interface CodeGenerateResponse {
+  session_id: string;
+  status: "ready" | "error";
+  error_code?: string;
+}
+
+export interface PrototypeSession {
+  id: string;
+  session_id: string;
+  design_context: Record<string, unknown>;
+  generated_code?: string;
+  thumbnail_url?: string;
+  frame_name?: string;
+  frame_width?: number;
+  frame_height?: number;
+  status: string;
+  error_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ──────────────────────────────────────────────────────
 // UI State Types (frontend-only, not from backend)
 // ──────────────────────────────────────────────────────
 

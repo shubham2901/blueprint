@@ -90,6 +90,10 @@ def log(level: str, message: str, **context) -> None:
 # LLM Configuration
 # ──────────────────────────────────────────────────────
 
+# Code generation model (design-to-code) — vision-capable, no fallback chain in Phase 2
+# Per 02-RESEARCH.md: Gemini JSON mode conflicts with vision; code output is plain text
+CODE_GEN_MODEL = "gemini/gemini-2.5-pro"
+
 # LLM Configuration (see ARCHITECTURE.md ADR-2 and ADR-3)
 LLM_CONFIG = {
     "persona": {

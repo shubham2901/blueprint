@@ -218,6 +218,29 @@ function BuildShellContent() {
                 setViewMode("paste");
                 setImportResult(null);
               }}
+              onRegenerate={async () => {
+                setViewMode("generating");
+                setImportError(null);
+                try {
+                  const codeRes = await generateCode(importResult);
+                  if (codeRes.status === "ready") {
+                    setSessionId(codeRes.session_id);
+                    setViewMode("success");
+                  } else {
+                    setImportError(
+                      `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
+                    );
+                    setViewMode("error");
+                  }
+                } catch (genErr) {
+                  setImportError(
+                    genErr instanceof Error
+                      ? genErr.message
+                      : "We're having trouble generating your prototype. Please try again."
+                  );
+                  setViewMode("error");
+                }
+              }}
             />
           )}
           {viewMode === "error" && (

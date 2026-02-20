@@ -7,7 +7,7 @@ Blueprint PM V1 delivers: Import (Figma OAuth + frame URL), Discuss (freeform ch
 ## Phases
 
 - [x] **Phase 1: Shell + Landing + Figma Import** — Layout from designs, Connect with Figma, paste URL, import single frame
-- [ ] **Phase 2: Code Generation** — Design context → React code (single-shot, no chat yet)
+- [x] **Phase 2: Code Generation** — Design context → React code (single-shot, no chat yet) (completed 2026-02-20)
 - [ ] **Phase 3: Sandpack Preview** — Live React preview, retry/fallback on error
 - [ ] **Phase 4: Chat Iteration** — Multi-turn chat drives code changes, preview updates
 - [ ] **Phase 5: Session Persistence** — Session cookie + DB, restore on return
@@ -91,7 +91,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Shell + Landing + Figma Import | 5/5 | Complete | 2025-02-19 |
-| 2. Code Generation | 3/6 | In Progress|  |
+| 2. Code Generation | 3/6 | Complete    | 2026-02-20 |
 | 3. Sandpack Preview | 0/0 | Not started | - |
 | 4. Chat Iteration | 0/0 | Not started | - |
 | 5. Session Persistence | 0/0 | Not started | - |

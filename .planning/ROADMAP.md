@@ -6,7 +6,7 @@ Blueprint PM V1 delivers: Import (Figma OAuth + frame URL), Discuss (freeform ch
 
 ## Phases
 
-- [ ] **Phase 1: Shell + Landing + Figma Import** — Layout from designs, Connect with Figma, paste URL, import single frame
+- [x] **Phase 1: Shell + Landing + Figma Import** — Layout from designs, Connect with Figma, paste URL, import single frame
 - [ ] **Phase 2: Code Generation** — Design context → React code (single-shot, no chat yet)
 - [ ] **Phase 3: Sandpack Preview** — Live React preview, retry/fallback on error
 - [ ] **Phase 4: Chat Iteration** — Multi-turn chat drives code changes, preview updates
@@ -28,21 +28,28 @@ Blueprint PM V1 delivers: Import (Figma OAuth + frame URL), Discuss (freeform ch
 **Plans**: 5 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Route restructure + Build shell (tabs, layout)
-- [ ] 01-02-PLAN.md — Landing + Connect CTA + Paste URL UI
-- [ ] 01-03-PLAN.md — Figma OAuth backend (start, callback, status)
-- [ ] 01-04-PLAN.md — Figma Import backend (URL parse, fetch, validate)
-- [ ] 01-05-PLAN.md — Wire OAuth + Import (Connect CTA, Import flow)
+- [x] 01-01-PLAN.md — Route restructure + Build shell (tabs, layout)
+- [x] 01-02-PLAN.md — Landing + Connect CTA + Paste URL UI
+- [x] 01-03-PLAN.md — Figma OAuth backend (start, callback, status)
+- [x] 01-04-PLAN.md — Figma Import backend (URL parse, fetch, validate)
+- [x] 01-05-PLAN.md — Wire OAuth + Import (Connect CTA, Import flow)
 
 ### Phase 2: Code Generation
-**Goal**: Given design context, system produces React code. No chat yet; single-shot generation.
+**Goal**: Given design context from Figma import, system produces React + Tailwind code. Single-shot generation — no chat yet. Code stored in DB.
 **Depends on**: Phase 1
 **Requirements**: CODE-01
 **Success Criteria** (what must be TRUE):
   1. On import success, system generates React code from design context
   2. Code uses Tailwind and functional components
   3. User can trigger "Regenerate" for testing
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — DB schema + models (prototype_sessions, CRUD)
+- [ ] 02-02-PLAN.md — Design context transformer (Figma → LLM-ready)
+- [ ] 02-03-PLAN.md — LLM vision support (call_llm_vision, Gemini 2.5 Pro)
+- [ ] 02-04-PLAN.md — Code generation endpoint + prompt
+- [ ] 02-05-PLAN.md — Frontend: generating state + success + Regenerate
 
 ### Phase 3: Sandpack Preview
 **Goal**: Live React preview in browser. Retry on compile error; fallback to last working version.
@@ -82,8 +89,8 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Shell + Landing + Figma Import | 0/5 | Not started | - |
-| 2. Code Generation | 0/0 | Not started | - |
+| 1. Shell + Landing + Figma Import | 5/5 | Complete | 2025-02-19 |
+| 2. Code Generation | 0/5 | Not started | - |
 | 3. Sandpack Preview | 0/0 | Not started | - |
 | 4. Chat Iteration | 0/0 | Not started | - |
 | 5. Session Persistence | 0/0 | Not started | - |

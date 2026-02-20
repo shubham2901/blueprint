@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -385,7 +386,54 @@ def mock_db(monkeypatch):
     
     async def mock_log_user_choice(*args, **kwargs) -> None:
         pass
-    
+
+    async def mock_create_prototype_session(
+        session_id: str,
+        design_context: dict,
+        thumbnail_url: str | None = None,
+        frame_name: str | None = None,
+        frame_width: int | None = None,
+        frame_height: int | None = None,
+        status: str = "pending",
+    ) -> str:
+        now = datetime.now(timezone.utc).isoformat()
+        storage["prototype_sessions"][session_id] = {
+            "id": session_id,
+            "session_id": session_id,
+            "design_context": design_context,
+            "thumbnail_url": thumbnail_url,
+            "frame_name": frame_name,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "status": status,
+            "generated_code": None,
+            "error_code": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        return session_id
+
+    async def mock_update_prototype_session(
+        session_id: str,
+        generated_code: str | None = None,
+        status: str | None = None,
+        error_code: str | None = None,
+    ) -> bool:
+        if session_id not in storage["prototype_sessions"]:
+            return False
+        row = storage["prototype_sessions"][session_id]
+        if generated_code is not None:
+            row["generated_code"] = generated_code
+        if status is not None:
+            row["status"] = status
+        if error_code is not None:
+            row["error_code"] = error_code
+        row["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return True
+
+    async def mock_get_prototype_session(session_id: str) -> Optional[dict]:
+        return storage["prototype_sessions"].get(session_id)
+
     # Apply mocks
     monkeypatch.setattr("app.db.create_journey", AsyncMock(side_effect=mock_create_journey))
     monkeypatch.setattr("app.db.get_journey", AsyncMock(side_effect=mock_get_journey))
@@ -409,6 +457,19 @@ def mock_db(monkeypatch):
     )
     monkeypatch.setattr(
         "app.db.get_prototype_session",
+        AsyncMock(side_effect=mock_get_prototype_session),
+    )
+    # Codegen imports from app.db at load time — patch where used
+    monkeypatch.setattr(
+        "app.api.codegen.create_prototype_session",
+        AsyncMock(side_effect=mock_create_prototype_session),
+    )
+    monkeypatch.setattr(
+        "app.api.codegen.update_prototype_session",
+        AsyncMock(side_effect=mock_update_prototype_session),
+    )
+    monkeypatch.setattr(
+        "app.api.codegen.get_prototype_session",
         AsyncMock(side_effect=mock_get_prototype_session),
     )
 

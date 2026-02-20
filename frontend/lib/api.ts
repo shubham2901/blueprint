@@ -11,6 +11,8 @@ import type {
   ResearchEvent,
   SelectionRequest,
   RefineRequest,
+  CodeGenerateResponse,
+  PrototypeSession,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -26,6 +28,13 @@ export interface FigmaStatusResponse {
 export interface FigmaImportResponse {
   design_context: Record<string, unknown>;
   warnings: string[];
+  thumbnail_url: string | null;
+  frame_name: string | null;
+  frame_width: number | null;
+  frame_height: number | null;
+  child_count: number;
+  file_key?: string | null;
+  node_id?: string | null;
 }
 
 /**
@@ -72,6 +81,70 @@ export async function importFigmaFrame(url: string): Promise<FigmaImportResponse
     throw new Error(`We couldn't import that frame. It may be private or the link may have expired. (Ref: ${errorCode})`);
   }
   return body as FigmaImportResponse;
+}
+
+// ──────────────────────────────────────────────────────
+// Code Generation API
+// ──────────────────────────────────────────────────────
+
+/**
+ * POST /api/code/generate — generate React code from Figma design context.
+ * Blocks 10-30s until generation completes.
+ * Throws with friendly message + (Ref: BP-XXX) on error.
+ */
+export async function generateCode(
+  importResult: FigmaImportResponse
+): Promise<CodeGenerateResponse> {
+  const requestId = generateRequestId();
+  const body = {
+    design_context: importResult.design_context,
+    thumbnail_url: importResult.thumbnail_url ?? undefined,
+    frame_name: importResult.frame_name ?? undefined,
+    frame_width: importResult.frame_width ?? undefined,
+    frame_height: importResult.frame_height ?? undefined,
+    file_key: importResult.file_key ?? undefined,
+    node_id: importResult.node_id ?? undefined,
+  };
+  const res = await fetch(`${API_URL}/api/code/generate`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-Id": requestId,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  const errorCode = data?.error_code || requestId;
+  if (res.status === 401) {
+    throw new Error(`Connect with Figma to generate code. (Ref: ${errorCode})`);
+  }
+  if (!res.ok) {
+    throw new Error(
+      `We're having trouble generating your prototype. Please try again. (Ref: ${errorCode})`
+    );
+  }
+  return data as CodeGenerateResponse;
+}
+
+/**
+ * GET /api/code/session — return current prototype session for bp_session cookie.
+ * Returns null on 404 (no session).
+ */
+export async function getPrototypeSession(): Promise<PrototypeSession | null> {
+  const requestId = generateRequestId();
+  const res = await fetch(`${API_URL}/api/code/session`, {
+    method: "GET",
+    credentials: "include",
+    headers: { "X-Request-Id": requestId },
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    return null;
+  }
+  return res.json() as Promise<PrototypeSession>;
 }
 
 function generateRequestId(): string {

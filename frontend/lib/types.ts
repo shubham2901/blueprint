@@ -257,6 +257,8 @@ export interface CodeGenerateRequest {
   frame_name?: string;
   frame_width?: number;
   frame_height?: number;
+  file_key?: string | null;
+  node_id?: string | null;
 }
 
 export interface CodeGenerateResponse {

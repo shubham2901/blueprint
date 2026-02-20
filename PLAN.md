@@ -337,14 +337,49 @@ CREATE TABLE user_choices_log (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Figma OAuth tokens (session-scoped, V0 anonymous)
+-- Figma OAuth tokens
+-- Logged-in users: stored by user_id (FK to auth.users when auth enabled)
+-- Anonymous users: stored by session_id (from cookie)
 CREATE TABLE figma_tokens (
-    session_id TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NULL,           -- when logged in; FK to auth.users(id) in V1
+    session_id TEXT NULL,        -- when anonymous (from bp_session cookie)
     access_token TEXT NOT NULL,
     refresh_token TEXT,
     expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now()
+    created_at TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT figma_tokens_owner_check CHECK (user_id IS NOT NULL OR session_id IS NOT NULL)
 );
+CREATE UNIQUE INDEX figma_tokens_user_id_key ON figma_tokens(user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX figma_tokens_session_id_key ON figma_tokens(session_id) WHERE session_id IS NOT NULL;
+
+-- Prototype sessions (code generation — one active session per bp_session cookie)
+-- Regenerate overwrites previous code (upsert by session_id)
+CREATE TABLE prototype_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id TEXT NOT NULL UNIQUE,
+    design_context JSONB NOT NULL,
+    generated_code TEXT,
+    thumbnail_url TEXT,
+    frame_name TEXT,
+    frame_width INTEGER,
+    frame_height INTEGER,
+    status TEXT DEFAULT 'pending',
+    error_code TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Migration (if you have the old schema with session_id as PK):
+-- ALTER TABLE figma_tokens ADD COLUMN user_id UUID NULL;
+-- ALTER TABLE figma_tokens ADD COLUMN id UUID DEFAULT gen_random_uuid();
+-- ALTER TABLE figma_tokens ALTER COLUMN id SET NOT NULL;
+-- ALTER TABLE figma_tokens DROP CONSTRAINT figma_tokens_pkey;
+-- ALTER TABLE figma_tokens ADD PRIMARY KEY (id);
+-- ALTER TABLE figma_tokens ALTER COLUMN session_id DROP NOT NULL;
+-- CREATE UNIQUE INDEX figma_tokens_user_id_key ON figma_tokens(user_id) WHERE user_id IS NOT NULL;
+-- CREATE UNIQUE INDEX figma_tokens_session_id_key ON figma_tokens(session_id) WHERE session_id IS NOT NULL;
+-- ALTER TABLE figma_tokens ADD CONSTRAINT figma_tokens_owner_check CHECK (user_id IS NOT NULL OR session_id IS NOT NULL);
 ```
 
 ---

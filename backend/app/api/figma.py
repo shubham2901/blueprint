@@ -15,6 +15,7 @@ import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
+from app.auth import get_current_user_id
 from app.config import generate_error_code, log, settings
 from app.db import get_figma_tokens, store_figma_tokens
 from app.models import FigmaImportRequest, FigmaImportResponse
@@ -27,7 +28,7 @@ SCOPES = "file_content:read,file_metadata:read"
 STATE_COOKIE = "bp_figma_state"
 SESSION_COOKIE = "bp_session"
 STATE_MAX_AGE = 300  # 5 minutes
-SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
 def _is_secure() -> bool:
@@ -44,7 +45,9 @@ async def oauth_start(response: Response) -> RedirectResponse:
     if not settings.figma_client_id:
         log("ERROR", "figma oauth start failed", error="FIGMA_CLIENT_ID not configured", error_code="BP-CONFIG")
         redirect_url = f"{settings.frontend_url}?figma_error=1&error_code=BP-CONFIG"
-        return RedirectResponse(url=redirect_url, status_code=302)
+        resp = RedirectResponse(url=redirect_url, status_code=302)
+        resp.delete_cookie(STATE_COOKIE, path="/")
+        return resp
 
     state = secrets.token_urlsafe(32)
     params = {
@@ -87,28 +90,31 @@ async def oauth_callback(
     """
     frontend_url = settings.frontend_url.rstrip("/")
 
+    def _error_redirect(code_err: str) -> RedirectResponse:
+        """Build error redirect, cleaning up all OAuth cookies."""
+        resp = RedirectResponse(
+            url=f"{frontend_url}?figma_error=1&error_code={code_err}",
+            status_code=302,
+        )
+        resp.delete_cookie(STATE_COOKIE, path="/")
+        return resp
+
     # User denied or error from Figma
     if error:
         code_err = generate_error_code()
         log("ERROR", "figma oauth callback error", error=error, error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
     # Validate state (CSRF)
     if not state or not bp_figma_state or state != bp_figma_state:
         code_err = generate_error_code()
         log("ERROR", "figma oauth state mismatch", error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
     if not code:
         code_err = generate_error_code()
         log("ERROR", "figma oauth callback missing code", error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
     # Exchange code for tokens — MUST complete within 30 seconds
     try:
@@ -131,16 +137,12 @@ async def oauth_callback(
     except Exception as e:
         code_err = generate_error_code()
         log("ERROR", "figma token exchange failed", error=str(e), error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
     if token_resp.status_code != 200:
         code_err = generate_error_code()
         log("ERROR", "figma token exchange failed", status=token_resp.status_code, body=token_resp.text[:200], error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
     try:
         data = token_resp.json()
@@ -152,33 +154,35 @@ async def oauth_callback(
     except Exception as e:
         code_err = generate_error_code()
         log("ERROR", "figma token response parse failed", error=str(e), error_code=code_err)
-        resp = RedirectResponse(url=f"{frontend_url}?figma_error=1&error_code={code_err}", status_code=302)
-        resp.delete_cookie(STATE_COOKIE, path="/")
-        return resp
+        return _error_redirect(code_err)
 
-    # Generate or reuse session_id
-    session_id = request.cookies.get(SESSION_COOKIE) or str(uuid.uuid4())
-
-    # Store tokens (sync call)
+    # Store tokens: by user_id (logged in) or session_id (anonymous)
     from datetime import datetime, timedelta, timezone
     expires_at = None
     if expires_in:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-    store_figma_tokens(session_id, access_token, refresh_token, expires_at)
 
-    log("INFO", "figma oauth complete", session_id=session_id[:8])
+    user_id = get_current_user_id(request)
+    if user_id:
+        store_figma_tokens(access_token, refresh_token, expires_at, user_id=user_id)
+        log("INFO", "figma oauth complete", user_id=user_id[:8])
+    else:
+        session_id = request.cookies.get(SESSION_COOKIE) or str(uuid.uuid4())
+        store_figma_tokens(access_token, refresh_token, expires_at, session_id=session_id)
+        log("INFO", "figma oauth complete", session_id=session_id[:8])
 
     resp = RedirectResponse(url=f"{frontend_url}?figma_connected=1", status_code=302)
     resp.delete_cookie(STATE_COOKIE, path="/")
-    resp.set_cookie(
-        key=SESSION_COOKIE,
-        value=session_id,
-        max_age=SESSION_MAX_AGE,
-        httponly=True,
-        secure=_is_secure(),
-        samesite="lax",
-        path="/",
-    )
+    if not user_id:
+        resp.set_cookie(
+            key=SESSION_COOKIE,
+            value=session_id,
+            max_age=SESSION_MAX_AGE,
+            httponly=True,
+            secure=_is_secure(),
+            samesite="lax",
+            path="/",
+        )
     return resp
 
 
@@ -239,6 +243,16 @@ def _validate_design_context(data: dict) -> list[str]:
     return warnings
 
 
+def _get_figma_tokens_for_request(request: Request, bp_session: str | None) -> dict | None:
+    """Get Figma tokens: by user_id if logged in, else by session_id from cookie."""
+    user_id = get_current_user_id(request)
+    if user_id:
+        return get_figma_tokens(user_id=user_id)
+    if bp_session:
+        return get_figma_tokens(session_id=bp_session)
+    return None
+
+
 @router.post("/import", response_model=FigmaImportResponse)
 async def figma_import(
     body: FigmaImportRequest,
@@ -248,18 +262,10 @@ async def figma_import(
     """
     POST /api/figma/import
 
-    Import a Figma frame by URL. Requires OAuth tokens in session.
+    Import a Figma frame by URL. Requires OAuth tokens (by user or session).
     Returns design context (nodes, components, styles) and optional warnings.
     """
-    # Check tokens
-    if not bp_session:
-        code = generate_error_code()
-        log("ERROR", "figma import no session", error_code=code)
-        raise HTTPException(
-            status_code=401,
-            detail={"message": "Connect with Figma to import this frame.", "error_code": code},
-        )
-    tokens = get_figma_tokens(bp_session)
+    tokens = _get_figma_tokens_for_request(request, bp_session)
     if not tokens:
         code = generate_error_code()
         log("ERROR", "figma import no tokens", error_code=code)
@@ -324,12 +330,13 @@ async def figma_import(
             },
         )
     if resp.status_code == 429:
+        retry_after = resp.headers.get("Retry-After", "unknown")
         code = generate_error_code()
-        log("ERROR", "figma import rate limited", error_code=code)
+        log("ERROR", "figma import rate limited", error_code=code, retry_after=retry_after, body=resp.text[:200])
         raise HTTPException(
             status_code=429,
             detail={
-                "message": "We couldn't import that frame. Please try again in a moment.",
+                "message": f"Figma's API is rate limiting us. Please wait a couple of minutes and try again.",
                 "error_code": code,
             },
         )
@@ -357,20 +364,58 @@ async def figma_import(
             },
         )
 
+    # Fetch thumbnail image for the frame
+    thumbnail_url = None
+    try:
+        img_resp = await httpx.AsyncClient().get(
+            f"{FIGMA_API_BASE}/images/{file_key}",
+            params={"ids": node_id, "format": "png", "scale": 2},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if img_resp.status_code == 200:
+            img_data = img_resp.json()
+            images = img_data.get("images", {})
+            thumbnail_url = images.get(node_id)
+    except Exception as e:
+        log("WARN", "figma thumbnail fetch failed", error=str(e))
+
+    # Extract frame metadata
+    frame_name = None
+    frame_width = None
+    frame_height = None
+    child_count = 0
+    for node_data in data.get("nodes", {}).values():
+        if isinstance(node_data, dict) and "document" in node_data:
+            doc = node_data["document"]
+            frame_name = doc.get("name")
+            bbox = doc.get("absoluteBoundingBox", {})
+            frame_width = bbox.get("width")
+            frame_height = bbox.get("height")
+            child_count = len(doc.get("children", []))
+            break
+
     warnings = _validate_design_context(data)
     log("INFO", "figma import completed", file_key=file_key[:8], warnings_count=len(warnings))
-    return FigmaImportResponse(design_context=data, warnings=warnings)
+    return FigmaImportResponse(
+        design_context=data,
+        warnings=warnings,
+        thumbnail_url=thumbnail_url,
+        frame_name=frame_name,
+        frame_width=int(frame_width) if frame_width else None,
+        frame_height=int(frame_height) if frame_height else None,
+        child_count=child_count,
+        file_key=file_key,
+        node_id=node_id,
+    )
 
 
 @router.get("/status")
-async def figma_status(bp_session: str | None = Cookie(default=None)) -> dict:
+async def figma_status(request: Request, bp_session: str | None = Cookie(default=None)) -> dict:
     """
     GET /api/figma/status
 
-    Returns { "connected": true } if session has valid tokens, else { "connected": false }.
-    No auth required — frontend uses this to set figmaConnected state.
+    Returns { "connected": true } if user/session has valid tokens, else { "connected": false }.
+    Logged in: checks by user_id. Anonymous: checks by session cookie.
     """
-    if not bp_session:
-        return {"connected": False}
-    tokens = get_figma_tokens(bp_session)
+    tokens = _get_figma_tokens_for_request(request, bp_session)
     return {"connected": tokens is not None}

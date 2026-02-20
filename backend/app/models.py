@@ -46,6 +46,8 @@ class FigmaImportResponse(BaseModel):
     frame_width: int | None = Field(default=None, description="Frame width in pixels")
     frame_height: int | None = Field(default=None, description="Frame height in pixels")
     child_count: int = Field(default=0, description="Number of direct children in the frame")
+    file_key: str | None = Field(default=None, description="Figma file key for API calls (thumbnail, SVG export)")
+    node_id: str | None = Field(default=None, description="Figma node ID for API calls (thumbnail, SVG export)")
 
 
 class CodeGenerateRequest(BaseModel):
@@ -55,6 +57,8 @@ class CodeGenerateRequest(BaseModel):
     frame_name: str | None = Field(default=None, description="Name of the frame")
     frame_width: int | None = Field(default=None, description="Frame width in pixels")
     frame_height: int | None = Field(default=None, description="Frame height in pixels")
+    file_key: str | None = Field(default=None, description="Figma file key for thumbnail/SVG fetch")
+    node_id: str | None = Field(default=None, description="Figma node ID for thumbnail/SVG fetch")
 
 
 class CodeGenerateResponse(BaseModel):

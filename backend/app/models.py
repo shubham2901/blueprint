@@ -41,6 +41,43 @@ class FigmaImportResponse(BaseModel):
     """Response from Figma import — design context and optional warnings."""
     design_context: dict = Field(..., description="Document subtree, nodes, components, styles")
     warnings: list[str] = Field(default_factory=list, description="Validation warnings (never block import)")
+    thumbnail_url: str | None = Field(default=None, description="Rendered PNG thumbnail of the frame")
+    frame_name: str | None = Field(default=None, description="Name of the imported frame")
+    frame_width: int | None = Field(default=None, description="Frame width in pixels")
+    frame_height: int | None = Field(default=None, description="Frame height in pixels")
+    child_count: int = Field(default=0, description="Number of direct children in the frame")
+
+
+class CodeGenerateRequest(BaseModel):
+    """Request to generate code from Figma design context."""
+    design_context: dict = Field(..., description="Raw or transformed Figma context")
+    thumbnail_url: str | None = Field(default=None, description="Figma PNG thumbnail URL")
+    frame_name: str | None = Field(default=None, description="Name of the frame")
+    frame_width: int | None = Field(default=None, description="Frame width in pixels")
+    frame_height: int | None = Field(default=None, description="Frame height in pixels")
+
+
+class CodeGenerateResponse(BaseModel):
+    """Response from code generation — session status."""
+    session_id: str
+    status: str = Field(..., description="'ready' | 'error'")
+    error_code: str | None = Field(default=None, description="BP-XXXXXX ref when status='error'")
+
+
+class PrototypeSession(BaseModel):
+    """Prototype session row from prototype_sessions table."""
+    id: str
+    session_id: str
+    design_context: dict
+    generated_code: str | None = None
+    thumbnail_url: str | None = None
+    frame_name: str | None = None
+    frame_width: int | None = None
+    frame_height: int | None = None
+    status: str
+    error_code: str | None = None
+    created_at: str
+    updated_at: str
 
 
 # -----------------------------------------------------------------------------

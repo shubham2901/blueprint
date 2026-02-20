@@ -412,45 +412,61 @@ async def update_llm_state(provider: str, reason: str) -> None:
 
 
 def store_figma_tokens(
-    session_id: str,
     access_token: str,
     refresh_token: str | None = None,
     expires_at: datetime | None = None,
+    *,
+    user_id: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """
-    Upsert Figma tokens for a session.
-    Used after OAuth callback token exchange.
+    Upsert Figma tokens for a user (logged in) or session (anonymous).
+
+    Exactly one of user_id or session_id must be provided.
+    - Logged-in users: user_id from auth
+    - Anonymous: session_id from cookie
     """
+    if (user_id is None) == (session_id is None):
+        raise ValueError("Exactly one of user_id or session_id must be provided")
     try:
         sb = get_supabase()
         now = datetime.now(timezone.utc).isoformat()
         data = {
-            "session_id": session_id,
             "access_token": access_token,
             "refresh_token": refresh_token or None,
             "expires_at": expires_at.isoformat() if expires_at else None,
             "created_at": now,
         }
-        sb.table("figma_tokens").upsert(data, on_conflict="session_id").execute()
+        if user_id:
+            data["user_id"] = user_id
+            sb.table("figma_tokens").delete().eq("user_id", user_id).execute()
+            sb.table("figma_tokens").insert(data).execute()
+        else:
+            data["session_id"] = session_id
+            sb.table("figma_tokens").delete().eq("session_id", session_id).execute()
+            sb.table("figma_tokens").insert(data).execute()
     except Exception as e:
         code = generate_error_code()
         log("ERROR", "db write failed", operation="store_figma_tokens", error=str(e), error_code=code)
 
 
-def get_figma_tokens(session_id: str) -> Optional[dict]:
+def get_figma_tokens(*, user_id: str | None = None, session_id: str | None = None) -> Optional[dict]:
     """
-    Get Figma tokens for a session.
+    Get Figma tokens for a user (logged in) or session (anonymous).
+
+    Exactly one of user_id or session_id must be provided.
     Returns None if not found or expired (expires_at in past).
     """
+    if (user_id is None) == (session_id is None):
+        raise ValueError("Exactly one of user_id or session_id must be provided")
     try:
         sb = get_supabase()
-        response = (
-            sb.table("figma_tokens")
-            .select("*")
-            .eq("session_id", session_id)
-            .maybe_single()
-            .execute()
-        )
+        q = sb.table("figma_tokens").select("*")
+        if user_id:
+            q = q.eq("user_id", user_id)
+        else:
+            q = q.eq("session_id", session_id)
+        response = q.maybe_single().execute()
         if response is None or not response.data:
             return None
         row = dict(response.data)
@@ -465,6 +481,127 @@ def get_figma_tokens(session_id: str) -> Optional[dict]:
     except Exception as e:
         code = generate_error_code()
         log("ERROR", "db read failed", operation="get_figma_tokens", error=str(e), error_code=code)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prototype Sessions (code generation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def create_prototype_session(
+    session_id: str,
+    design_context: dict,
+    thumbnail_url: str | None = None,
+    frame_name: str | None = None,
+    frame_width: int | None = None,
+    frame_height: int | None = None,
+) -> str:
+    """
+    Create or upsert a prototype session row.
+    Uses upsert on session_id — regenerate overwrites previous code.
+    Returns the row id.
+    """
+    try:
+        sb = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        data = {
+            "session_id": session_id,
+            "design_context": design_context,
+            "thumbnail_url": thumbnail_url,
+            "frame_name": frame_name,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "status": "pending",
+            "updated_at": now,
+        }
+        response = (
+            sb.table("prototype_sessions")
+            .upsert(data, on_conflict="session_id")
+            .execute()
+        )
+        if response.data:
+            row = response.data[0] if isinstance(response.data, list) else response.data
+            return str(row["id"])
+        return ""
+    except Exception as e:
+        code = generate_error_code()
+        log(
+            "ERROR",
+            "db write failed",
+            operation="create_prototype_session",
+            error=str(e),
+            error_code=code,
+        )
+        return ""
+
+
+async def update_prototype_session(
+    session_id: str,
+    generated_code: str | None = None,
+    status: str | None = None,
+    error_code: str | None = None,
+) -> bool:
+    """
+    Update a prototype session by session_id.
+    Regenerate overwrites previous code.
+    Returns True if update succeeded.
+    """
+    try:
+        sb = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        updates: dict[str, Any] = {"updated_at": now}
+        if generated_code is not None:
+            updates["generated_code"] = generated_code
+        if status is not None:
+            updates["status"] = status
+        if error_code is not None:
+            updates["error_code"] = error_code
+        response = (
+            sb.table("prototype_sessions")
+            .update(updates)
+            .eq("session_id", session_id)
+            .execute()
+        )
+        return bool(response.data and len(response.data) > 0)
+    except Exception as e:
+        code = generate_error_code()
+        log(
+            "ERROR",
+            "db write failed",
+            operation="update_prototype_session",
+            error=str(e),
+            error_code=code,
+        )
+        return False
+
+
+async def get_prototype_session(session_id: str) -> Optional[dict]:
+    """
+    Get a prototype session by session_id.
+    Returns row as dict or None if not found.
+    """
+    try:
+        sb = get_supabase()
+        response = (
+            sb.table("prototype_sessions")
+            .select("*")
+            .eq("session_id", session_id)
+            .maybe_single()
+            .execute()
+        )
+        if response is not None and response.data:
+            return dict(response.data)
+        return None
+    except Exception as e:
+        code = generate_error_code()
+        log(
+            "ERROR",
+            "db read failed",
+            operation="get_prototype_session",
+            error=str(e),
+            error_code=code,
+        )
         return None
 
 

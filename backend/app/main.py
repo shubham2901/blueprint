@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config import settings, log
-from app.api import research, journeys, figma
+from app.api import codegen, research, journeys, figma
 
 # Rate limiter — global, per-IP
 limiter = Limiter(key_func=get_remote_address)
@@ -79,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(research.router)
     app.include_router(journeys.router)
     app.include_router(figma.router)
+    app.include_router(codegen.router)
 
     return app
 

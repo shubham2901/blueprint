@@ -19,6 +19,9 @@ beautifulsoup4>=4.12.0
 # Database
 supabase>=2.11.0
 
+# Code generation (JSX validation)
+esbuild-py>=0.1.6
+
 # Rate Limiting
 slowapi>=0.1.9
 
@@ -30,3 +33,6 @@ slowapi>=0.1.9
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
+
+# LLM Evaluation (for prompt testing)
+deepeval>=2.0.0

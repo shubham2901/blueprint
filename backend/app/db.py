@@ -496,6 +496,7 @@ async def create_prototype_session(
     frame_name: str | None = None,
     frame_width: int | None = None,
     frame_height: int | None = None,
+    status: str = "pending",
 ) -> str:
     """
     Create or upsert a prototype session row.
@@ -512,7 +513,7 @@ async def create_prototype_session(
             "frame_name": frame_name,
             "frame_width": frame_width,
             "frame_height": frame_height,
-            "status": "pending",
+            "status": status,
             "updated_at": now,
         }
         response = (

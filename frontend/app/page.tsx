@@ -6,7 +6,15 @@ import { useSearchParams } from "next/navigation";
 import { BuildLanding } from "@/app/components/BuildLanding";
 import { PasteUrlView } from "@/app/components/PasteUrlView";
 import { ImportingView } from "@/app/components/ImportingView";
-import { getFigmaStatus, importFigmaFrame } from "@/lib/api";
+import { FramePreview } from "@/app/components/FramePreview";
+import { GeneratingView } from "@/app/components/GeneratingView";
+import {
+  getFigmaStatus,
+  importFigmaFrame,
+  generateCode,
+  getPrototypeSession,
+  type FigmaImportResponse,
+} from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,15 +26,25 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
  * Main area: BuildLanding | PasteUrlView | ImportingView | success/error.
  */
 
-type ViewMode = "landing" | "paste" | "importing" | "success" | "error";
+type ViewMode = "landing" | "paste" | "importing" | "generating" | "success" | "error";
 
 function BuildShellContent() {
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("landing");
   const [figmaUrl, setFigmaUrl] = useState("");
   const [figmaConnected, setFigmaConnected] = useState(false);
-  const [designContext, setDesignContext] = useState<Record<string, unknown> | null>(null);
+  const [importResult, setImportResult] = useState<FigmaImportResponse | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  const markFigmaConnected = (connected: boolean) => {
+    setFigmaConnected(connected);
+    if (connected) {
+      localStorage.setItem("bp_figma_connected", "1");
+    } else {
+      localStorage.removeItem("bp_figma_connected");
+    }
+  };
 
   // OAuth return: ?figma_connected=1 or ?figma_error=1&error_code=BP-XXX
   useEffect(() => {
@@ -34,21 +52,70 @@ function BuildShellContent() {
     const error = searchParams.get("figma_error");
     const errorCode = searchParams.get("error_code");
     if (connected === "1") {
-      setFigmaConnected(true);
+      markFigmaConnected(true);
+      setViewMode("paste");
+      const savedUrl = localStorage.getItem("bp_figma_url");
+      if (savedUrl) {
+        setFigmaUrl(savedUrl);
+        localStorage.removeItem("bp_figma_url");
+      }
       window.history.replaceState(null, "", "/");
     }
     if (error === "1" && errorCode) {
       setImportError(`We couldn't connect to Figma. Please try again. (Ref: ${errorCode})`);
+      setViewMode("paste");
+      const savedUrl = localStorage.getItem("bp_figma_url");
+      if (savedUrl) {
+        setFigmaUrl(savedUrl);
+        localStorage.removeItem("bp_figma_url");
+      }
       window.history.replaceState(null, "", "/");
     }
   }, [searchParams]);
 
-  // Check Figma status on mount (handles refresh)
+  // Restore from localStorage, then verify with backend
   useEffect(() => {
-    getFigmaStatus().then((res) => setFigmaConnected(res.connected));
+    const stored = localStorage.getItem("bp_figma_connected") === "1";
+    if (stored) setFigmaConnected(true);
+
+    getFigmaStatus().then((res) => {
+      if (res.connected) {
+        markFigmaConnected(true);
+      } else if (stored) {
+        markFigmaConnected(false);
+      }
+    });
+  }, []);
+
+  // Session restore on mount: if we have a ready prototype session, show success
+  useEffect(() => {
+    getPrototypeSession().then((session) => {
+      if (session?.status === "ready") {
+        setSessionId(session.session_id);
+        setImportResult({
+          design_context: session.design_context ?? {},
+          thumbnail_url: session.thumbnail_url ?? null,
+          frame_name: session.frame_name ?? null,
+          frame_width: session.frame_width ?? null,
+          frame_height: session.frame_height ?? null,
+          child_count: 0,
+          warnings: [],
+          file_key: undefined,
+          node_id: undefined,
+        });
+        setViewMode("success");
+      }
+    });
   }, []);
 
   const handleConnectClick = () => {
+    if (figmaConnected) {
+      setViewMode("paste");
+      return;
+    }
+    if (figmaUrl.trim()) {
+      localStorage.setItem("bp_figma_url", figmaUrl.trim());
+    }
     window.location.href = `${API_URL}/api/figma/oauth/start`;
   };
 
@@ -58,10 +125,36 @@ function BuildShellContent() {
     setImportError(null);
     try {
       const res = await importFigmaFrame(figmaUrl.trim());
-      setDesignContext(res.design_context);
-      setViewMode("success");
+      setImportResult(res);
+      setViewMode("generating");
+      try {
+        const codeRes = await generateCode(res);
+        if (codeRes.status === "ready") {
+          setSessionId(codeRes.session_id);
+          setViewMode("success");
+        } else {
+          setImportError(
+            `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
+          );
+          setViewMode("error");
+        }
+      } catch (genErr) {
+        const msg =
+          genErr instanceof Error
+            ? genErr.message
+            : "We're having trouble generating your prototype. Please try again.";
+        if (msg.includes("Connect with Figma")) {
+          markFigmaConnected(false);
+        }
+        setImportError(msg);
+        setViewMode("error");
+      }
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      const msg = e instanceof Error ? e.message : "Something went wrong. Please try again.";
+      if (msg.includes("Connect with Figma")) {
+        markFigmaConnected(false);
+      }
+      setImportError(msg);
       setViewMode("error");
     }
   };
@@ -86,18 +179,19 @@ function BuildShellContent() {
             </Link>
             <button
               type="button"
-              className="relative pb-4 flex items-center text-base font-serif italic text-charcoal px-1 cursor-default"
+              className="relative pb-4 flex items-center text-base font-serif font-bold text-charcoal px-1 cursor-default"
             >
               Build
               <div className="absolute bottom-[-1px] left-0 w-full h-[3px] bg-charcoal rounded-t-full" />
             </button>
           </div>
         </header>
-        <div className="flex-1 flex items-center justify-center p-12 min-h-0 overflow-auto">
+        <div className="flex-1 flex items-start justify-center p-12 min-h-0 overflow-auto">
           {viewMode === "landing" && (
             <BuildLanding
               onConnectClick={handleConnectClick}
               onPasteUrlClick={() => setViewMode("paste")}
+              figmaConnected={figmaConnected}
             />
           )}
           {viewMode === "paste" && (
@@ -111,32 +205,53 @@ function BuildShellContent() {
             />
           )}
           {viewMode === "importing" && <ImportingView figmaUrl={figmaUrl} />}
-          {viewMode === "success" && (
-            <div className="text-center max-w-lg mx-auto">
-              <h2 className="font-serif text-2xl text-charcoal mb-4">Frame imported</h2>
-              <p className="text-charcoal-light text-sm mb-6">
-                Design context loaded. Code generation coming in Phase 2.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("paste");
-                  setDesignContext(null);
-                }}
-                className="text-charcoal-light text-sm hover:text-charcoal hover:underline"
-              >
-                Import another frame
-              </button>
-            </div>
+          {viewMode === "generating" && <GeneratingView />}
+          {viewMode === "success" && importResult && (
+            <FramePreview
+              thumbnailUrl={importResult.thumbnail_url}
+              frameName={importResult.frame_name}
+              frameWidth={importResult.frame_width}
+              frameHeight={importResult.frame_height}
+              childCount={importResult.child_count}
+              warnings={importResult.warnings}
+              onImportAnother={() => {
+                setViewMode("paste");
+                setImportResult(null);
+              }}
+            />
           )}
           {viewMode === "error" && (
             <div className="text-center max-w-lg mx-auto">
               <p className="text-charcoal mb-4">{importError}</p>
               <button
                 type="button"
-                onClick={() => {
-                  setViewMode("paste");
-                  setImportError(null);
+                onClick={async () => {
+                  if (importResult) {
+                    setViewMode("generating");
+                    setImportError(null);
+                    try {
+                      const codeRes = await generateCode(importResult);
+                      if (codeRes.status === "ready") {
+                        setSessionId(codeRes.session_id);
+                        setViewMode("success");
+                      } else {
+                        setImportError(
+                          `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
+                        );
+                        setViewMode("error");
+                      }
+                    } catch (genErr) {
+                      setImportError(
+                        genErr instanceof Error
+                          ? genErr.message
+                          : "We're having trouble generating your prototype. Please try again."
+                      );
+                      setViewMode("error");
+                    }
+                  } else {
+                    setViewMode("paste");
+                    setImportError(null);
+                  }
                 }}
                 className="text-terracotta hover:underline text-sm"
               >
@@ -157,7 +272,7 @@ function BuildShellContent() {
         <header className="h-20 flex items-center justify-between px-6 shrink-0 bg-sand-dark/50 backdrop-blur-sm border-b border-stone/30">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-charcoal rounded-lg flex items-center justify-center shadow-md">
-              <span className="font-serif italic text-sand-light text-sm font-bold">
+              <span className="font-serif text-sand-light text-sm font-bold">
                 B
               </span>
             </div>
@@ -182,7 +297,7 @@ function BuildShellContent() {
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col">
           <div className="mt-8 space-y-6">
-            <h1 className="text-3xl font-serif italic text-charcoal leading-tight">
+            <h1 className="text-3xl font-serif font-bold text-charcoal leading-tight">
               What are you building today?
             </h1>
           </div>

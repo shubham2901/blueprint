@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 
 from app.auth import get_current_user_id
 from app.config import generate_error_code, log, settings
-from app.db import get_figma_tokens, store_figma_tokens
+from app.db import delete_figma_tokens, get_figma_tokens, store_figma_tokens
 from app.models import FigmaImportRequest, FigmaImportResponse
 
 router = APIRouter(prefix="/api/figma", tags=["figma"])
@@ -29,6 +29,72 @@ STATE_COOKIE = "bp_figma_state"
 SESSION_COOKIE = "bp_session"
 STATE_MAX_AGE = 300  # 5 minutes
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+async def _refresh_figma_token(tokens: dict, *, user_id: str | None = None, session_id: str | None = None) -> dict | None:
+    """
+    Use refresh_token to get a new access_token from Figma.
+    Returns updated token dict on success, None on failure.
+    Figma refresh tokens are single-use — each refresh returns a new refresh_token.
+    """
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        log("WARN", "figma token refresh skipped, no refresh_token")
+        if user_id:
+            delete_figma_tokens(user_id=user_id)
+        elif session_id:
+            delete_figma_tokens(session_id=session_id)
+        return None
+
+    try:
+        basic_auth = base64.b64encode(
+            f"{settings.figma_client_id}:{settings.figma_client_secret}".encode()
+        ).decode()
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                FIGMA_TOKEN_URL,
+                headers={
+                    "Authorization": f"Basic {basic_auth}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                },
+            )
+    except Exception as e:
+        log("ERROR", "figma token refresh request failed", error=str(e))
+        return None
+
+    if resp.status_code != 200:
+        log("ERROR", "figma token refresh failed", status=resp.status_code, body=resp.text[:200])
+        # Refresh token is dead — delete stale tokens so status returns "connected: false"
+        if user_id:
+            delete_figma_tokens(user_id=user_id)
+        elif session_id:
+            delete_figma_tokens(session_id=session_id)
+        return None
+
+    try:
+        data = resp.json()
+        new_access = data.get("access_token")
+        new_refresh = data.get("refresh_token")
+        expires_in = data.get("expires_in")
+        if not new_access:
+            log("ERROR", "figma token refresh returned no access_token")
+            return None
+    except Exception as e:
+        log("ERROR", "figma token refresh parse failed", error=str(e))
+        return None
+
+    from datetime import datetime, timedelta, timezone
+    expires_at = None
+    if expires_in:
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+    store_figma_tokens(new_access, new_refresh, expires_at, user_id=user_id, session_id=session_id)
+    log("INFO", "figma token refreshed successfully")
+    return {"access_token": new_access, "refresh_token": new_refresh, "expires_at": str(expires_at) if expires_at else None}
 
 
 def _is_secure() -> bool:
@@ -287,14 +353,17 @@ async def figma_import(
             },
         )
 
+    # Resolve identity for potential token refresh
+    user_id = get_current_user_id(request)
+
     # Fetch from Figma API
     access_token = tokens.get("access_token", "")
-    url = f"{FIGMA_API_BASE}/files/{file_key}/nodes"
+    api_url = f"{FIGMA_API_BASE}/files/{file_key}/nodes"
     log("INFO", "figma import started", file_key=file_key[:8], node_id=node_id)
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                url,
+                api_url,
                 params={"ids": node_id},
                 headers={"Authorization": f"Bearer {access_token}"},
             )
@@ -310,15 +379,45 @@ async def figma_import(
         )
 
     if resp.status_code == 403:
-        code = generate_error_code()
-        log("ERROR", "figma import 403 forbidden", error_code=code)
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "We couldn't import that frame. It may be private or the link may have expired.",
-                "error_code": code,
-            },
+        # Token likely expired — attempt refresh and retry once
+        log("WARN", "figma import 403, attempting token refresh")
+        refreshed = await _refresh_figma_token(
+            tokens,
+            user_id=user_id if user_id else None,
+            session_id=bp_session if not user_id else None,
         )
+        if refreshed:
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        api_url,
+                        params={"ids": node_id},
+                        headers={"Authorization": f"Bearer {refreshed['access_token']}"},
+                    )
+            except Exception as e:
+                code = generate_error_code()
+                log("ERROR", "figma import retry fetch failed", error=str(e), error_code=code)
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "message": "We couldn't import that frame. It may be private or the link may have expired.",
+                        "error_code": code,
+                    },
+                )
+            if resp.status_code == 200:
+                log("INFO", "figma import succeeded after token refresh")
+            # If still not 200, fall through to error handling below
+
+        if resp.status_code == 403:
+            code = generate_error_code()
+            log("ERROR", "figma import 403 forbidden after refresh attempt", error_code=code)
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Your Figma connection has expired. Please reconnect with Figma and try again.",
+                    "error_code": code,
+                },
+            )
     if resp.status_code == 404:
         code = generate_error_code()
         log("ERROR", "figma import 404 not found", error_code=code)

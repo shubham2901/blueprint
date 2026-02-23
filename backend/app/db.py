@@ -484,6 +484,22 @@ def get_figma_tokens(*, user_id: str | None = None, session_id: str | None = Non
         return None
 
 
+def delete_figma_tokens(*, user_id: str | None = None, session_id: str | None = None) -> None:
+    """Delete Figma tokens for a user or session. Used when tokens are irrecoverably expired."""
+    if (user_id is None) == (session_id is None):
+        raise ValueError("Exactly one of user_id or session_id must be provided")
+    try:
+        sb = get_supabase()
+        if user_id:
+            sb.table("figma_tokens").delete().eq("user_id", user_id).execute()
+        else:
+            sb.table("figma_tokens").delete().eq("session_id", session_id).execute()
+        log("INFO", "figma tokens deleted", user_id=user_id, session_id=session_id)
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "db write failed", operation="delete_figma_tokens", error=str(e), error_code=code)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Prototype Sessions (code generation)
 # ─────────────────────────────────────────────────────────────────────────────

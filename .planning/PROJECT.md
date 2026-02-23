@@ -1,5 +1,11 @@
 # Blueprint PM
 
+## Build Process
+
+See [BUILD_PROCESS.md](BUILD_PROCESS.md) for the repeatable methodology used when building with AI coding agents — research → architecture → design → implementation → verification.
+
+---
+
 ## What This Is
 
 Blueprint PM is a chat-first prototyping tool for product managers. PM connects Figma via OAuth, pastes a frame URL, and defines what they want to build through freeform chat. The system generates and updates a live React preview as they iterate — no code, specs, or PRDs. The prototype replaces the document. New product in the same repo as the research tool; research stays at a separate route and will be integrated later.

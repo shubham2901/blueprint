@@ -18,6 +18,7 @@ Blueprint is a product/market research tool. Users type a prompt describing what
 | `DESIGN_GUIDE.md` | Visual design system (Cozy Sand theme: colors, typography, spacing) |
 | `TECH_DEBT.md` | Everything intentionally deferred from V0 |
 | `FOUNDER_TASKS.md` | Tasks for the founder: prompts to write, API keys to get, infra to set up |
+| `.planning/BUILD_PROCESS.md` | Repeatable methodology for building with AI agents (research → architecture → design → implementation) |
 
 **Read `MODULE_SPEC.md` before implementing any file.** It contains the exact function signatures, Pydantic models, and TypeScript types to use.
 

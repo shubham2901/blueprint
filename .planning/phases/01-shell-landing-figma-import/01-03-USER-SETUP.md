@@ -34,7 +34,9 @@ Complete these items for Figma OAuth to function.
 
 - [ ] **Create figma_tokens table in Supabase**
   - Run the SQL from PLAN.md Part 5 (figma_tokens table)
-  - Or: Supabase Dashboard → SQL Editor → paste and run
+  - Logged-in users: tokens stored by user_id
+  - Anonymous users: tokens stored by session_id (from cookie)
+  - If you have the old schema: run the migration SQL in PLAN.md
 
 ## Verification
 

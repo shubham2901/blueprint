@@ -48,7 +48,30 @@ Covers: synthesizing user-selected market gaps into a single actionable problem 
 
 ---
 
-### 5. ~~Persona System Prompt~~ DONE
+### 5. Refine Prompt (Review Needed)
+
+**Status**: Initial version written in `backend/app/prompts.py` (`build_refine_prompt`).
+
+**Function**: `build_refine_prompt(original_output: dict, output_schema_name: str, user_feedback: str, additional_context: str = "") -> list[dict]`
+
+Covers: interpreting user feedback patterns (more X, focus on Y, simplify, correct errors), preserving existing good content while addressing feedback, maintaining evidence grounding.
+
+**Review needed**: The initial prompt handles common feedback patterns but you may want to adjust:
+- The feedback interpretation guidelines (table in the prompt)
+- The quality rules for what should be preserved vs changed
+- Any domain-specific refinement behaviors
+
+**Implementation note**: The current refine pipeline (`_refine_competitors`, `_refine_explore`, etc.) appends feedback directly to the original prompts. The dedicated `build_refine_prompt` function is available for a more sophisticated approach where the LLM sees the original output and feedback together. Consider migrating to use `build_refine_prompt` if current refinement quality is insufficient.
+
+**Evaluation tests**: Located in `backend/tests/evals/test_refine_eval.py` with golden test cases in `backend/tests/evals/datasets/refine_cases.json`. Run with:
+```bash
+cd backend
+pytest tests/evals/test_refine_eval.py -v -m eval
+```
+
+---
+
+### 6. ~~Persona System Prompt~~ DONE
 
 **Status**: Updated in `MODULE_SPEC.md` Section 1 (`config.py` — `LLM_CONFIG["persona"]["system_prompt"]`) and `ARCHITECTURE.md` Section 2.
 
@@ -143,6 +166,45 @@ Define which forums/platforms to integrate in V1:
 - Others? (Capterra, TrustRadius, etc.)
 
 Note: G2 has been dropped (requires sign-in, aggressive anti-scraping). AlternativeTo replaces it as the primary curated-alternatives source.
+
+---
+
+## Testing and Quality
+
+### Prompt Evaluation Golden Test Cases
+
+The testing framework is set up in `backend/tests/evals/`. Golden test cases are stored in JSON files that you should review and expand:
+
+| File | Purpose | Action Needed |
+|------|---------|---------------|
+| `datasets/classify_cases.json` | 24 test cases for intent classification | Review edge cases, add domain-specific examples |
+| `datasets/competitors_cases.json` | 4 test cases for competitor discovery | Add more domains, verify expected competitors |
+
+**Running prompt evals** (requires real GEMINI_API_KEY):
+```bash
+cd backend
+pytest tests/evals -v -m eval
+```
+
+**Adding new test cases**: Each case has `input`, `expected_intent`, `expected_domain`, and `description`. Add cases that cover your specific product domains and edge cases the LLM might mishandle.
+
+### CI/CD Secrets
+
+To enable GitHub Actions CI/CD, add these secrets to your GitHub repository:
+
+| Secret | Required For |
+|--------|-------------|
+| `GEMINI_API_KEY` | Prompt evaluation tests |
+| `SUPABASE_URL` | Integration tests (future) |
+| `SUPABASE_SERVICE_KEY` | Integration tests (future) |
+
+**Path**: GitHub → Repository → Settings → Secrets and variables → Actions → New repository secret
+
+### Monitoring Test Results
+
+- **Unit tests**: Run on every commit, no API keys needed
+- **Prompt evals**: Run when `prompts.py` changes, nightly, or manual trigger
+- **Results**: Check the Actions tab in GitHub for test summaries
 
 ---
 

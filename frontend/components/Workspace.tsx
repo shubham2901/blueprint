@@ -86,7 +86,7 @@ export function Workspace({
 
         {blocks.length === 0 && !waitingForCompetitors && !waitingForProblems && phase !== "streaming" && !hasError && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="font-serif text-xl italic text-placeholder">
+            <p className="font-serif text-xl text-placeholder">
               Begin your inquiry.
             </p>
             <p className="mt-2 font-sans text-[14px] text-secondary">
@@ -103,7 +103,7 @@ export function Workspace({
               <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-terracotta [animation-delay:150ms]" />
               <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-terracotta [animation-delay:300ms]" />
             </div>
-            <p className="font-serif text-xl italic text-charcoal">
+            <p className="font-serif text-xl text-charcoal">
               Researching your idea...
             </p>
             <p className="mt-2 font-sans text-[14px] text-secondary">

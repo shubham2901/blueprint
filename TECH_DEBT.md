@@ -241,6 +241,146 @@ These are from the product roadmap in [PLAN.md](PLAN.md). Each new module follow
 - **Migration path**: Add `user_id` FK, add RLS policies, add `WHERE user_id = current_user` to all queries.
 - **Dependency**: Requires auth.
 
+### Smart Alternatives Graph (Tagged Pairings) — V1
+- **What**: A tagged, segmented alternatives mapping that understands *how* products relate — not just *that* they relate. Enables intelligent competitor retrieval based on positioning, not just category.
+- **Problem with current approach**: The `alternatives_cache` stores a flat list: "Notion → [Obsidian, AppFlowy, Google Keep, Apple Notes, ...]". All alternatives are treated equally. But a user searching for "heavy all-in-one note-taking tool" should get Notion, Obsidian, Evernote — not Google Keep or Apple Notes. A user searching for "lightweight quick-capture note app" should get Keep, Apple Notes — not Notion.
+- **Core idea**: Every product gets **tags** that describe its positioning within a category. Alternatives inherit these tags. Retrieval filters by tag overlap, not just "is an alternative to X".
+- **V0 workaround**: Flat `alternatives_cache` JSONB list. No segmentation. LLM does the filtering at query time (wasteful, slow).
+- **Data structure**:
+
+```sql
+-- Segment tags per product (derived from AlternativeTo features, LLM analysis, manual curation)
+CREATE TABLE product_tags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    normalized_name TEXT NOT NULL,            -- product lookup key
+    category TEXT NOT NULL,                   -- "note-taking", "project-management", "crm"
+    segment TEXT NOT NULL,                    -- "heavyweight-all-in-one", "lightweight-quick-capture", "developer-focused"
+    tags TEXT[] NOT NULL,                     -- ["markdown-native", "local-first", "privacy-focused", "free"]
+    source TEXT DEFAULT 'alternativeto',      -- where the tags were derived from
+    confidence FLOAT DEFAULT 1.0,            -- 1.0 = manual/verified, 0.7 = LLM-inferred
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(normalized_name, category)
+);
+```
+
+- **Example data**:
+
+| product | category | segment | tags |
+|---------|----------|---------|------|
+| notion | note-taking | heavyweight-all-in-one | [collaborative, cloud-first, freemium, databases, wiki] |
+| obsidian | note-taking | knowledge-management | [markdown-native, local-first, plugin-ecosystem, graph-view, privacy-focused] |
+| evernote | note-taking | heavyweight-all-in-one | [multimodal, web-clipper, ocr, cross-platform, freemium] |
+| google keep | note-taking | lightweight-quick-capture | [free, google-ecosystem, mobile-first, simple, lists] |
+| apple notes | note-taking | lightweight-quick-capture | [free, apple-ecosystem, mobile-first, handwriting, simple] |
+| logseq | note-taking | knowledge-management | [outliner, open-source, local-first, graph-view, developer-friendly] |
+
+- **Retrieval logic**:
+  1. User searches "heavy all-in-one note taking tool" → classify extracts `category: note-taking`, `segment: heavyweight-all-in-one`
+  2. Query: `SELECT * FROM product_tags WHERE category = 'note-taking' AND segment = 'heavyweight-all-in-one'` → Notion, Evernote
+  3. Also include partial tag matches from other segments (Obsidian matches "heavyweight" via feature richness but is a different segment)
+  4. LLM uses these tagged results to produce a more relevant, segmented competitor list
+
+- **Seeding strategy**:
+  1. **Phase 1**: Derive segments and tags from AlternativeTo features + license + platform data (already extracted in dry run)
+  2. **Phase 2**: LLM-enrich tags by analyzing product descriptions and comparison notes
+  3. **Phase 3**: Manual curation for top 200 products across key categories
+- **Migration path**: Add `product_tags` table. Extend `alternatives.py` seeder to generate tags from scraped features/license data. Update competitor pipeline to query `product_tags` before `alternatives_cache`. Falls back to flat `alternatives_cache` if no tags found.
+- **Dependency**: Requires `alternatives.py` scraper (V0) and alternatives_cache to be populated first.
+
+### Comprehensive Product Report Cache — V1
+- **What**: A rich, structured profile for every product we encounter — starting with AlternativeTo data, then progressively enriched from Play Store, App Store, Reddit, dev communities, and direct website scraping.
+- **Problem with current approach**: The `products` table stores basic scrape output (raw text). The `alternatives_cache` stores minimal per-alternative data (name, description, platforms). Neither gives the pipeline a *complete picture* of a product without an expensive live scrape + LLM call every time.
+- **Core idea**: Build a **product knowledge base** — one rich profile per product, enriched over time from multiple sources, cached with 30-day TTL. The competitor pipeline reads from this cache first, only scraping live when the cache is cold.
+- **V0 workaround**: Live scraping + LLM synthesis on every research request. Expensive, slow, redundant for popular products.
+- **Data structure**:
+
+```sql
+CREATE TABLE product_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_name TEXT NOT NULL,               -- display name: "Brave"
+    normalized_name TEXT NOT NULL,             -- lookup key: "brave"
+    alt_names TEXT[],                          -- ["Brave Browser", "Brave Web Browser"]
+
+    -- Core profile
+    description TEXT,                          -- one-paragraph summary
+    review_summary TEXT,                       -- AI-synthesized from user comments/reviews
+    pros JSONB,                               -- ["Fast performance", "Built-in ad blocker", "Privacy-focused"]
+    cons JSONB,                               -- ["BAT token controversy", "Chromium-based", "Sync issues"]
+
+    -- Classification
+    application_type TEXT,                     -- "Web Browser", "Note-taking Tool", "Project Management"
+    cost_model TEXT,                           -- "Free", "Freemium", "Paid"
+    platforms JSONB,                           -- ["Windows", "Mac", "Linux", "Android", "iPhone"]
+    tags JSONB,                               -- ["privacy", "open-source", "chromium-based", "ad-blocking"]
+    features JSONB,                           -- ["Built-in ad blocker", "Brave Rewards", "Tor integration"]
+
+    -- External links & ratings
+    website_url TEXT,
+    play_store_url TEXT,
+    play_store_rating FLOAT,
+    play_store_reviews_count INT,
+    app_store_url TEXT,
+    app_store_rating FLOAT,
+    app_store_reviews_count INT,
+
+    -- Community signals
+    alternativeto_likes INT DEFAULT 0,
+    alternativeto_comments INT DEFAULT 0,
+    reddit_sentiment TEXT,                     -- "mostly positive", "mixed", "negative"
+
+    -- Enrichment tracking
+    enriched_from JSONB DEFAULT '[]',          -- ["alternativeto", "play_store", "app_store", "reddit", "website"]
+    enrichment_log JSONB DEFAULT '{}',         -- {"alternativeto": "2026-02-13T...", "play_store": "2026-02-14T..."}
+
+    -- Metadata
+    source_url TEXT,                           -- primary source URL
+    scraped_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(normalized_name)
+);
+```
+
+- **Example record**:
+
+```json
+{
+  "product_name": "Brave",
+  "normalized_name": "brave",
+  "alt_names": ["Brave Browser", "Brave Web Browser"],
+  "description": "Privacy-focused web browser with built-in ad blocking, tracking protection, and optional crypto rewards system.",
+  "review_summary": "Users praise fast performance, built-in ad blocker, and strong privacy features. Criticism centers on BAT token integration, Chromium dependency, and occasional sync issues. Seen as a solid Chrome alternative for privacy-conscious users.",
+  "pros": ["Fast performance", "Built-in ad/tracker blocker", "Privacy-focused", "Open source", "Rewards system", "Low resource usage"],
+  "cons": ["BAT token controversy", "Chromium-based", "Sync difficulties", "Occasional crashes", "Some sites break with shields up"],
+  "application_type": "Web Browser",
+  "cost_model": "Free",
+  "platforms": ["Windows", "Mac", "Linux", "Android", "iPhone", "iPad"],
+  "tags": ["privacy", "open-source", "chromium-based", "ad-blocking", "crypto"],
+  "features": ["Built-in ad blocker", "Brave Shields", "Brave Rewards (BAT)", "Tor integration", "IPFS support"],
+  "website_url": "https://brave.com",
+  "play_store_url": "https://play.google.com/store/apps/details?id=com.brave.browser",
+  "play_store_rating": 4.8,
+  "app_store_rating": 4.7,
+  "alternativeto_likes": 1276,
+  "enriched_from": ["alternativeto", "play_store", "app_store", "website"]
+}
+```
+
+- **Enrichment pipeline** (progressive, each source adds data):
+  1. **AlternativeTo** (Phase 1 — V0 seeder): name, platforms, license, features, likes, comments, comparison notes
+  2. **Play Store / App Store** (Phase 2 — V1): ratings, review counts, store URLs, additional description
+  3. **Reddit / Dev Communities** (Phase 3 — V1): sentiment summary, common praise/complaints
+  4. **Direct Website Scrape** (Phase 4 — V1): official description, pricing page data, feature list
+  5. **LLM Synthesis** (Phase 5 — V1): Generate `review_summary`, `pros`, `cons` from all collected data
+
+- **How the pipeline uses it**:
+  1. User searches for competitors in "note-taking"
+  2. Pipeline finds alternatives from `alternatives_cache` (or `product_tags` if available)
+  3. For each alternative, check `product_reports` for a cached rich profile
+  4. Only live-scrape products NOT in `product_reports` (or with expired TTL)
+  5. Result: 80%+ of competitor profiles served from cache → dramatically faster responses
+
+- **Migration path**: Create `product_reports` table. Extend `alternatives.py` seeder to populate basic profiles from AlternativeTo data. Add `db.get_product_report()` / `db.store_product_report()`. Update explore pipeline to check `product_reports` before live scraping. Add enrichment endpoints/scripts for each data source.
+- **Dependency**: Requires `alternatives.py` scraper (V0) and alternatives_cache. App store enrichment depends on stabilized `app_stores.py`.
+
 ---
 
 ## Frontend and UX

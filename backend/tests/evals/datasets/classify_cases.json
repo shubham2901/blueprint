@@ -1,0 +1,170 @@
+[
+  {
+    "id": "build-note-taking",
+    "input": "I want to build a note-taking app",
+    "expected_intent": "build",
+    "expected_domain": "Note-taking",
+    "description": "Clear build intent with explicit 'build' keyword"
+  },
+  {
+    "id": "build-crm",
+    "input": "I want to create a CRM for small businesses",
+    "expected_intent": "build",
+    "expected_domain": "CRM",
+    "description": "Build intent with 'create' keyword"
+  },
+  {
+    "id": "build-like-notion",
+    "input": "I want to build something like Notion but for students",
+    "expected_intent": "build",
+    "expected_domain": "Note-taking",
+    "description": "Build intent referencing existing product"
+  },
+  {
+    "id": "build-onboarding",
+    "input": "Design an onboarding flow for a fitness app",
+    "expected_intent": "build",
+    "expected_domain": "Fitness",
+    "description": "Build intent with 'design' keyword"
+  },
+  {
+    "id": "build-tech-stack",
+    "input": "What tech stack is best for a high-scale dating app?",
+    "expected_intent": "build",
+    "expected_domain": "Dating",
+    "description": "Build intent as tech stack question"
+  },
+  {
+    "id": "explore-edtech",
+    "input": "Tell me about edtech in India",
+    "expected_intent": "explore",
+    "expected_domain": "EdTech",
+    "description": "Clear explore intent with 'tell me about'"
+  },
+  {
+    "id": "explore-bare-product",
+    "input": "Notion",
+    "expected_intent": "explore",
+    "expected_domain": "Note-taking",
+    "description": "Bare product name defaults to explore"
+  },
+  {
+    "id": "explore-comparison",
+    "input": "Tinder vs Bumble",
+    "expected_intent": "explore",
+    "expected_domain": "Dating",
+    "description": "Comparison query defaults to explore"
+  },
+  {
+    "id": "explore-fintech",
+    "input": "What's happening in fintech?",
+    "expected_intent": "explore",
+    "expected_domain": "Fintech",
+    "description": "Market exploration question"
+  },
+  {
+    "id": "explore-figma",
+    "input": "How does Figma work?",
+    "expected_intent": "explore",
+    "expected_domain": "Design Tools",
+    "description": "Product deep-dive question"
+  },
+  {
+    "id": "improve-crm",
+    "input": "How do I make my CRM better than Salesforce?",
+    "expected_intent": "improve",
+    "expected_domain": "CRM",
+    "description": "Improve intent with possessive 'my'"
+  },
+  {
+    "id": "improve-critique",
+    "input": "Critique my fitness tracker concept",
+    "expected_intent": "improve",
+    "expected_domain": "Fitness",
+    "description": "Improve intent with 'critique'"
+  },
+  {
+    "id": "improve-differentiate",
+    "input": "How can I differentiate from Notion?",
+    "expected_intent": "improve",
+    "expected_domain": "Note-taking",
+    "description": "Improve intent with 'differentiate'"
+  },
+  {
+    "id": "small-talk-hi",
+    "input": "Hi",
+    "expected_intent": "small_talk",
+    "expected_domain": null,
+    "description": "Simple greeting"
+  },
+  {
+    "id": "small-talk-morning",
+    "input": "Good morning!",
+    "expected_intent": "small_talk",
+    "expected_domain": null,
+    "description": "Time-based greeting"
+  },
+  {
+    "id": "small-talk-thanks",
+    "input": "Thanks!",
+    "expected_intent": "small_talk",
+    "expected_domain": null,
+    "description": "Gratitude expression"
+  },
+  {
+    "id": "small-talk-what-can-you-do",
+    "input": "What can you do?",
+    "expected_intent": "small_talk",
+    "expected_domain": null,
+    "description": "Meta-question about capabilities"
+  },
+  {
+    "id": "off-topic-code",
+    "input": "Write Python code for Fibonacci",
+    "expected_intent": "off_topic",
+    "expected_domain": null,
+    "description": "Code generation request"
+  },
+  {
+    "id": "off-topic-capital",
+    "input": "What is the capital of France?",
+    "expected_intent": "off_topic",
+    "expected_domain": null,
+    "description": "General knowledge question"
+  },
+  {
+    "id": "off-topic-equation",
+    "input": "Solve this equation: 2x + 5 = 15",
+    "expected_intent": "off_topic",
+    "expected_domain": null,
+    "description": "Math problem"
+  },
+  {
+    "id": "off-topic-debug",
+    "input": "Debug my React component",
+    "expected_intent": "off_topic",
+    "expected_domain": null,
+    "description": "Debugging request"
+  },
+  {
+    "id": "ambiguous-apps",
+    "input": "apps",
+    "expected_intent": "explore",
+    "expected_domain": null,
+    "description": "Very vague input - should explore with broad questions"
+  },
+  {
+    "id": "multi-intent",
+    "input": "Build a Notion competitor and tell me about the market",
+    "expected_intent": "build",
+    "expected_domain": "Note-taking",
+    "description": "Multi-intent should prioritize build"
+  },
+  {
+    "id": "build-with-audience",
+    "input": "I want to build a note-taking app for students",
+    "expected_intent": "build",
+    "expected_domain": "Note-taking",
+    "description": "Build with pre-specified audience - should not re-ask about audience"
+  }
+]

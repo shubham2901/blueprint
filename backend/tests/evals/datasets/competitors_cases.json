@@ -1,0 +1,42 @@
+[
+  {
+    "id": "note-taking-basic",
+    "domain": "Note-taking",
+    "clarification_context": {
+      "target_platform": ["web", "mobile"],
+      "target_audience": "knowledge-workers"
+    },
+    "expected_competitors": ["Notion", "Obsidian", "Roam Research", "Evernote"],
+    "description": "Standard note-taking query"
+  },
+  {
+    "id": "dating-mobile",
+    "domain": "Dating",
+    "clarification_context": {
+      "target_platform": ["mobile"],
+      "target_audience": "young-adults"
+    },
+    "expected_competitors": ["Tinder", "Bumble", "Hinge"],
+    "description": "Mobile dating apps"
+  },
+  {
+    "id": "project-management",
+    "domain": "Project Management",
+    "clarification_context": {
+      "target_platform": ["web"],
+      "target_audience": "teams"
+    },
+    "expected_competitors": ["Asana", "Trello", "Monday.com", "Jira"],
+    "description": "Team project management tools"
+  },
+  {
+    "id": "fitness-mobile",
+    "domain": "Fitness & Training",
+    "clarification_context": {
+      "target_platform": ["mobile"],
+      "target_audience": "casual-users"
+    },
+    "expected_competitors": ["Strava", "Nike Training Club", "Fitbit"],
+    "description": "Mobile fitness apps"
+  }
+]

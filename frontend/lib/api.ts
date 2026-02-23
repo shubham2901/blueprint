@@ -77,6 +77,12 @@ export async function importFigmaFrame(url: string): Promise<FigmaImportResponse
   if (res.status === 400) {
     throw new Error(`That doesn't look like a valid Figma frame URL. Check the link and try again. (Ref: ${errorCode})`);
   }
+  if (res.status === 403) {
+    throw new Error(`Your Figma connection has expired. Please reconnect with Figma and try again. (Ref: ${errorCode})`);
+  }
+  if (res.status === 429) {
+    throw new Error(`Figma's API is rate limiting us. Please wait a few minutes and try again. (Ref: ${errorCode})`);
+  }
   if (!res.ok) {
     throw new Error(`We couldn't import that frame. It may be private or the link may have expired. (Ref: ${errorCode})`);
   }

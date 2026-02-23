@@ -37,7 +37,7 @@ export function PasteUrlView({
       >
         ← Back
       </button>
-      <h1 className="font-serif text-3xl text-charcoal mb-8 text-center italic">
+      <h1 className="font-serif text-3xl font-bold text-charcoal mb-8 text-center">
         Paste your Figma frame URL to get started.
       </h1>
       <div className="w-full">
@@ -65,6 +65,12 @@ export function PasteUrlView({
             Import
           </button>
         </div>
+        {figmaConnected && (
+          <div className="mt-3 flex items-center gap-2 text-xs text-charcoal-light">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            Connected to Figma
+          </div>
+        )}
         {showConnectPrompt && (
           <p className="mt-4 text-sm text-charcoal-light">
             Connect with Figma to import this frame.

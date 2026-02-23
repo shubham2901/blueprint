@@ -1,0 +1,124 @@
+[
+  {
+    "id": "competitors-add-more",
+    "description": "User wants more competitors added to the list",
+    "original_output": {
+      "competitors": [
+        {"id": "comp-1", "name": "Notion", "description": "All-in-one workspace for notes, docs, and databases", "url": "https://notion.so"},
+        {"id": "comp-2", "name": "Obsidian", "description": "Local-first markdown note-taking with linking", "url": "https://obsidian.md"}
+      ],
+      "sources": ["https://alternativeto.net/software/notion/"]
+    },
+    "output_schema_name": "CompetitorList",
+    "user_feedback": "Add more competitors, especially enterprise-focused ones",
+    "additional_context": "Domain: Note-taking, Target: knowledge workers",
+    "expected_behavior": "Output should include original competitors plus new enterprise-focused ones",
+    "min_competitors": 4
+  },
+  {
+    "id": "competitors-focus-mobile",
+    "description": "User wants to narrow focus to mobile apps only",
+    "original_output": {
+      "competitors": [
+        {"id": "comp-1", "name": "Notion", "description": "All-in-one workspace", "url": "https://notion.so"},
+        {"id": "comp-2", "name": "Obsidian", "description": "Local-first markdown notes", "url": "https://obsidian.md"},
+        {"id": "comp-3", "name": "Evernote", "description": "Cross-platform note-taking", "url": "https://evernote.com"},
+        {"id": "comp-4", "name": "Bear", "description": "Beautiful iOS writing app", "url": "https://bear.app"}
+      ],
+      "sources": []
+    },
+    "output_schema_name": "CompetitorList",
+    "user_feedback": "Focus only on mobile-first apps, remove desktop-focused ones",
+    "additional_context": "Domain: Note-taking, Platform: mobile",
+    "expected_behavior": "Output should emphasize mobile-first competitors like Bear, possibly add more mobile apps",
+    "should_preserve": ["Bear"]
+  },
+  {
+    "id": "gap-analysis-more-detail",
+    "description": "User wants more detail on specific gaps",
+    "original_output": {
+      "problems": [
+        {
+          "id": "gap-1",
+          "title": "No mobile-first power tool",
+          "description": "Most note-taking apps treat mobile as secondary.",
+          "evidence": ["Users complain about mobile UX on Reddit"],
+          "opportunity_size": "high"
+        },
+        {
+          "id": "gap-2",
+          "title": "Privacy concerns",
+          "description": "Cloud-based apps raise privacy issues.",
+          "evidence": ["Growing interest in local-first solutions"],
+          "opportunity_size": "medium"
+        }
+      ]
+    },
+    "output_schema_name": "GapAnalysis",
+    "user_feedback": "Expand on the mobile-first gap with more evidence and specific pain points",
+    "additional_context": "Domain: Note-taking",
+    "expected_behavior": "The mobile-first gap should have more detailed evidence and pain points",
+    "focus_gap_id": "gap-1"
+  },
+  {
+    "id": "gap-analysis-add-gap",
+    "description": "User identifies a missing gap",
+    "original_output": {
+      "problems": [
+        {
+          "id": "gap-1",
+          "title": "Steep learning curve",
+          "description": "Power tools like Notion/Obsidian are complex",
+          "evidence": ["Onboarding complaints in reviews"],
+          "opportunity_size": "medium"
+        }
+      ]
+    },
+    "output_schema_name": "GapAnalysis",
+    "user_feedback": "What about collaboration? Team features seem lacking in local-first tools.",
+    "additional_context": "Domain: Note-taking, Competitors analyzed: Notion, Obsidian, Bear",
+    "expected_behavior": "Should add a gap about collaboration/team features while preserving existing gap",
+    "should_add_topic": "collaboration"
+  },
+  {
+    "id": "problem-statement-simplify",
+    "description": "User wants a simpler, more focused problem statement",
+    "original_output": {
+      "title": "Mobile-First Knowledge Management for Professional Knowledge Workers",
+      "content": "Professional knowledge workers need a mobile-first note-taking solution that combines the power of desktop tools like Notion with the speed and simplicity required for on-the-go capture, while maintaining privacy through local-first architecture and enabling seamless offline sync.",
+      "target_user": "Professional knowledge workers aged 25-45 who manage complex projects across multiple devices",
+      "key_differentiators": [
+        "Mobile-first architecture with desktop parity",
+        "Local-first with end-to-end encryption",
+        "Offline-first with conflict-free sync",
+        "AI-assisted organization"
+      ],
+      "validation_questions": [
+        "Would you pay $10/month for a mobile note-taking app with desktop-quality features?",
+        "How many times per day do you capture notes on mobile vs desktop?"
+      ]
+    },
+    "output_schema_name": "ProblemStatement",
+    "user_feedback": "Too complex. Simplify to focus on just the mobile capture problem.",
+    "additional_context": "Domain: Note-taking",
+    "expected_behavior": "Simpler problem statement focused specifically on mobile capture, fewer differentiators"
+  },
+  {
+    "id": "profile-wrong-info",
+    "description": "User corrects wrong information in a competitor profile",
+    "original_output": {
+      "name": "Obsidian",
+      "features_summary": "Markdown-based note-taking with linking and plugins. Requires monthly subscription.",
+      "pricing_tiers": [
+        {"tier": "Personal", "price": "$10/month", "features": ["Core features", "Sync"]}
+      ],
+      "strengths": ["Plugin ecosystem", "Local storage"],
+      "weaknesses": ["No mobile app", "Complex setup"],
+      "reddit_sentiment": "Generally positive"
+    },
+    "output_schema_name": "CompetitorProfile",
+    "user_feedback": "This is wrong - Obsidian is free for personal use, and it DOES have a mobile app",
+    "additional_context": "",
+    "expected_behavior": "Corrected pricing (free for personal) and removed 'No mobile app' from weaknesses"
+  }
+]

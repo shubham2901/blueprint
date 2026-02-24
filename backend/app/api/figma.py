@@ -17,7 +17,13 @@ from fastapi.responses import RedirectResponse
 
 from app.auth import get_current_user_id
 from app.config import generate_error_code, log, settings
-from app.db import delete_figma_tokens, get_figma_tokens, store_figma_tokens
+from app.db import (
+    delete_figma_tokens,
+    get_cached_figma_design,
+    get_figma_tokens,
+    store_figma_design_cache,
+    store_figma_tokens,
+)
 from app.models import FigmaImportRequest, FigmaImportResponse
 
 router = APIRouter(prefix="/api/figma", tags=["figma"])
@@ -353,6 +359,29 @@ async def figma_import(
             },
         )
 
+    # Check DB cache first — reduces Figma API calls (survives restarts)
+    cached = get_cached_figma_design(file_key, node_id)
+    if cached:
+        design_context = cached.get("design_context", {})
+        thumbnail_url = cached.get("thumbnail_url")
+        frame_name = cached.get("frame_name")
+        frame_width = cached.get("frame_width")
+        frame_height = cached.get("frame_height")
+        child_count = cached.get("child_count", 0)
+        warnings = _validate_design_context(design_context)
+        log("INFO", "figma import cache hit (db)", file_key=file_key[:8])
+        return FigmaImportResponse(
+            design_context=design_context,
+            warnings=warnings,
+            thumbnail_url=thumbnail_url,
+            frame_name=frame_name,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            child_count=child_count,
+            file_key=file_key,
+            node_id=node_id,
+        )
+
     # Resolve identity for potential token refresh
     user_id = get_current_user_id(request)
 
@@ -379,42 +408,54 @@ async def figma_import(
         )
 
     if resp.status_code == 403:
-        # Token likely expired — attempt refresh and retry once
+        # Access token expired — attempt one refresh, then retry once
         log("WARN", "figma import 403, attempting token refresh")
         refreshed = await _refresh_figma_token(
             tokens,
             user_id=user_id if user_id else None,
             session_id=bp_session if not user_id else None,
         )
-        if refreshed:
-            try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(
-                        api_url,
-                        params={"ids": node_id},
-                        headers={"Authorization": f"Bearer {refreshed['access_token']}"},
-                    )
-            except Exception as e:
-                code = generate_error_code()
-                log("ERROR", "figma import retry fetch failed", error=str(e), error_code=code)
-                raise HTTPException(
-                    status_code=502,
-                    detail={
-                        "message": "We couldn't import that frame. It may be private or the link may have expired.",
-                        "error_code": code,
-                    },
-                )
-            if resp.status_code == 200:
-                log("INFO", "figma import succeeded after token refresh")
-            # If still not 200, fall through to error handling below
-
-        if resp.status_code == 403:
+        if not refreshed:
+            # Refresh failed (invalid_grant, no refresh_token, etc.)
+            # Tokens already deleted by _refresh_figma_token — tell user to re-auth
             code = generate_error_code()
-            log("ERROR", "figma import 403 forbidden after refresh attempt", error_code=code)
+            log("ERROR", "figma import 403, refresh failed, re-auth required", error_code=code)
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": "Your Figma connection has expired. Please reconnect with Figma and try again.",
+                    "error_code": code,
+                },
+            )
+
+        # Refresh succeeded — retry the import once with new token
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    api_url,
+                    params={"ids": node_id},
+                    headers={"Authorization": f"Bearer {refreshed['access_token']}"},
+                )
+        except Exception as e:
+            code = generate_error_code()
+            log("ERROR", "figma import retry fetch failed", error=str(e), error_code=code)
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "We couldn't import that frame. Please try again.",
+                    "error_code": code,
+                },
+            )
+        if resp.status_code == 200:
+            log("INFO", "figma import succeeded after token refresh")
+        elif resp.status_code == 403:
+            # Even fresh token got 403 — file is genuinely inaccessible
+            code = generate_error_code()
+            log("ERROR", "figma import 403 with fresh token, file inaccessible", error_code=code)
             raise HTTPException(
                 status_code=403,
                 detail={
-                    "message": "Your Figma connection has expired. Please reconnect with Figma and try again.",
+                    "message": "We couldn't access that frame. It may be private or you may not have permission.",
                     "error_code": code,
                 },
             )
@@ -429,16 +470,38 @@ async def figma_import(
             },
         )
     if resp.status_code == 429:
-        retry_after = resp.headers.get("Retry-After", "unknown")
+        retry_after_raw = resp.headers.get("Retry-After", "")
+        upgrade_url = resp.headers.get("X-Figma-Upgrade-Link") or None
+        plan_tier = resp.headers.get("X-Figma-Plan-Tier") or None
+        rate_limit_type = resp.headers.get("X-Figma-Rate-Limit-Type") or None
+        retry_after_seconds: int | None = None
+        try:
+            retry_after_seconds = int(retry_after_raw) if retry_after_raw else None
+        except ValueError:
+            pass
         code = generate_error_code()
-        log("ERROR", "figma import rate limited", error_code=code, retry_after=retry_after, body=resp.text[:200])
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": f"Figma's API is rate limiting us. Please wait a couple of minutes and try again.",
-                "error_code": code,
-            },
+        log(
+            "ERROR",
+            "figma import rate limited",
+            error_code=code,
+            retry_after=retry_after_raw,
+            plan_tier=plan_tier,
+            rate_limit_type=rate_limit_type,
+            upgrade_url=upgrade_url,
+            body=resp.text[:200],
         )
+
+        # No auto-retry on 429 — surface error immediately to user
+        # Retrying burns quota and makes the problem worse
+        detail: dict = {
+            "message": "Figma's API is rate limiting us. Please try again later.",
+            "error_code": code,
+        }
+        if retry_after_seconds is not None:
+            detail["retry_after_seconds"] = retry_after_seconds
+        if upgrade_url:
+            detail["upgrade_url"] = upgrade_url
+        raise HTTPException(status_code=429, detail=detail)
     if resp.status_code != 200:
         code = generate_error_code()
         log("ERROR", "figma import failed", status=resp.status_code, body=resp.text[:200], error_code=code)
@@ -494,14 +557,28 @@ async def figma_import(
             break
 
     warnings = _validate_design_context(data)
+
+    # Store in DB cache (survives restarts, 7-day TTL)
+    frame_width_int = int(frame_width) if frame_width else None
+    frame_height_int = int(frame_height) if frame_height else None
+    store_figma_design_cache(
+        file_key=file_key,
+        node_id=node_id,
+        design_context=data,
+        thumbnail_url=thumbnail_url,
+        frame_name=frame_name,
+        frame_width=frame_width_int,
+        frame_height=frame_height_int,
+        child_count=child_count,
+    )
     log("INFO", "figma import completed", file_key=file_key[:8], warnings_count=len(warnings))
     return FigmaImportResponse(
         design_context=data,
         warnings=warnings,
         thumbnail_url=thumbnail_url,
         frame_name=frame_name,
-        frame_width=int(frame_width) if frame_width else None,
-        frame_height=int(frame_height) if frame_height else None,
+        frame_width=frame_width_int,
+        frame_height=frame_height_int,
         child_count=child_count,
         file_key=file_key,
         node_id=node_id,
@@ -518,3 +595,21 @@ async def figma_status(request: Request, bp_session: str | None = Cookie(default
     """
     tokens = _get_figma_tokens_for_request(request, bp_session)
     return {"connected": tokens is not None}
+
+
+@router.post("/disconnect")
+async def figma_disconnect(request: Request, bp_session: str | None = Cookie(default=None)) -> dict:
+    """
+    POST /api/figma/disconnect
+
+    Clears Figma OAuth tokens for the current user/session.
+    Used when user wants to reconnect with a different account or tokens are stale.
+    """
+    user_id = get_current_user_id(request)
+    if user_id:
+        delete_figma_tokens(user_id=user_id)
+        log("INFO", "figma disconnected by user", user_id=user_id[:8])
+    elif bp_session:
+        delete_figma_tokens(session_id=bp_session)
+        log("INFO", "figma disconnected by session", session_id=bp_session[:8])
+    return {"disconnected": True}

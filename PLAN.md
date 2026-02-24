@@ -370,6 +370,23 @@ CREATE TABLE prototype_sessions (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Figma design cache (persists across restarts, reduces API calls)
+-- 7-day TTL enforced in app code, upsert by cache_key
+CREATE TABLE figma_design_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cache_key TEXT NOT NULL UNIQUE,  -- format: file_key:node_id
+    file_key TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    design_context JSONB NOT NULL,
+    thumbnail_url TEXT,
+    frame_name TEXT,
+    frame_width INTEGER,
+    frame_height INTEGER,
+    child_count INTEGER DEFAULT 0,
+    cached_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX figma_design_cache_cached_at_idx ON figma_design_cache(cached_at);
+
 -- Migration (if you have the old schema with session_id as PK):
 -- ALTER TABLE figma_tokens ADD COLUMN user_id UUID NULL;
 -- ALTER TABLE figma_tokens ADD COLUMN id UUID DEFAULT gen_random_uuid();

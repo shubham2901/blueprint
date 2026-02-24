@@ -37,6 +37,19 @@ export interface FigmaImportResponse {
   node_id?: string | null;
 }
 
+/** Thrown when Figma API returns 429. Includes retry_after_seconds and upgrade_url when available. */
+export class FigmaRateLimitError extends Error {
+  constructor(
+    message: string,
+    public readonly retryAfterSeconds?: number,
+    public readonly upgradeUrl?: string,
+    public readonly errorCode?: string
+  ) {
+    super(message);
+    this.name = "FigmaRateLimitError";
+  }
+}
+
 /**
  * GET /api/figma/status — check if user has completed Figma OAuth.
  * Uses credentials: include for session cookie.
@@ -55,6 +68,19 @@ export async function getFigmaStatus(): Promise<FigmaStatusResponse> {
 }
 
 /**
+ * POST /api/figma/disconnect — clear Figma OAuth tokens.
+ * Call this before re-authenticating to ensure clean state.
+ */
+export async function disconnectFigma(): Promise<void> {
+  const requestId = generateRequestId();
+  await fetch(`${API_URL}/api/figma/disconnect`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "X-Request-Id": requestId },
+  });
+}
+
+/**
  * POST /api/figma/import — import a Figma frame by URL.
  * Returns design_context and warnings. Throws with friendly message + (Ref: BP-XXX).
  */
@@ -70,18 +96,31 @@ export async function importFigmaFrame(url: string): Promise<FigmaImportResponse
     body: JSON.stringify({ url }),
   });
   const body = await res.json().catch(() => ({}));
-  const errorCode = body?.error_code || requestId;
+  const detail = body?.detail ?? body;
+  const errorCode = detail?.error_code || body?.error_code || requestId;
+  const retryAfterSeconds = detail?.retry_after_seconds as number | undefined;
+  const upgradeUrl = detail?.upgrade_url as string | undefined;
   if (res.status === 401) {
-    throw new Error(`Connect with Figma to import this frame. (Ref: ${errorCode})`);
+    // Auth error — need to reconnect
+    const msg = detail?.message || "Connect with Figma to import this frame.";
+    throw new Error(`${msg} (Ref: ${errorCode})`);
   }
   if (res.status === 400) {
-    throw new Error(`That doesn't look like a valid Figma frame URL. Check the link and try again. (Ref: ${errorCode})`);
+    const msg = detail?.message || "That doesn't look like a valid Figma frame URL. Check the link and try again.";
+    throw new Error(`${msg} (Ref: ${errorCode})`);
   }
   if (res.status === 403) {
-    throw new Error(`Your Figma connection has expired. Please reconnect with Figma and try again. (Ref: ${errorCode})`);
+    // Permission error — file is inaccessible (NOT an auth error)
+    const msg = detail?.message || "We couldn't access that frame. It may be private or you may not have permission.";
+    throw new Error(`${msg} (Ref: ${errorCode})`);
   }
   if (res.status === 429) {
-    throw new Error(`Figma's API is rate limiting us. Please wait a few minutes and try again. (Ref: ${errorCode})`);
+    throw new FigmaRateLimitError(
+      `Figma's API is rate limiting us. (Ref: ${errorCode})`,
+      retryAfterSeconds,
+      upgradeUrl,
+      errorCode
+    );
   }
   if (!res.ok) {
     throw new Error(`We couldn't import that frame. It may be private or the link may have expired. (Ref: ${errorCode})`);

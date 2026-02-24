@@ -623,6 +623,81 @@ async def get_prototype_session(session_id: str) -> Optional[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Figma Design Cache (persistent)
+# ─────────────────────────────────────────────────────────────────────────────
+
+FIGMA_CACHE_TTL_DAYS = 7  # Cache Figma designs for 7 days
+
+
+def get_cached_figma_design(file_key: str, node_id: str) -> Optional[dict]:
+    """
+    Get cached Figma design context from the database.
+
+    Returns dict with design_context and thumbnail_url if found and not expired.
+    None if not found or expired.
+    """
+    try:
+        sb = get_supabase()
+        cache_key = f"{file_key}:{node_id}"
+        cutoff = datetime.now(timezone.utc) - timedelta(days=FIGMA_CACHE_TTL_DAYS)
+        response = (
+            sb.table("figma_design_cache")
+            .select("*")
+            .eq("cache_key", cache_key)
+            .gt("cached_at", cutoff.isoformat())
+            .maybe_single()
+            .execute()
+        )
+        if response is not None and response.data:
+            return dict(response.data)
+        return None
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "db read failed", operation="get_cached_figma_design", error=str(e), error_code=code)
+        return None
+
+
+def store_figma_design_cache(
+    file_key: str,
+    node_id: str,
+    design_context: dict,
+    thumbnail_url: str | None = None,
+    frame_name: str | None = None,
+    frame_width: int | None = None,
+    frame_height: int | None = None,
+    child_count: int = 0,
+) -> bool:
+    """
+    Upsert Figma design context into the database cache.
+
+    Uses cache_key (file_key:node_id) as unique constraint.
+    Returns True on success.
+    """
+    try:
+        sb = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        cache_key = f"{file_key}:{node_id}"
+        data = {
+            "cache_key": cache_key,
+            "file_key": file_key,
+            "node_id": node_id,
+            "design_context": design_context,
+            "thumbnail_url": thumbnail_url,
+            "frame_name": frame_name,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
+            "child_count": child_count,
+            "cached_at": now,
+        }
+        sb.table("figma_design_cache").upsert(data, on_conflict="cache_key").execute()
+        return True
+    except Exception as e:
+        code = generate_error_code()
+        log("ERROR", "db write failed", operation="store_figma_design_cache", error=str(e), error_code=code)
+        return False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # User Choice Logging (fire-and-forget)
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,1 +1,1 @@
-restart the servers and monitor the backend and front end logs for issues. 
+restart the servers and continously monitor the backend and frontend logs for issues. 

@@ -13,6 +13,8 @@ import {
   importFigmaFrame,
   generateCode,
   getPrototypeSession,
+  disconnectFigma,
+  FigmaRateLimitError,
   type FigmaImportResponse,
 } from "@/lib/api";
 
@@ -28,6 +30,25 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type ViewMode = "landing" | "paste" | "importing" | "generating" | "success" | "error";
 
+/**
+ * Check if an error message indicates an auth issue that requires reconnecting.
+ * Auth errors: "Connect with Figma", "expired", "reconnect"
+ * NOT auth errors: "private", "permission" (these are file access issues)
+ */
+function isAuthRelatedError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  // Exclude permission errors first
+  if (lower.includes("private") || lower.includes("permission")) {
+    return false;
+  }
+  // Check for auth-related keywords
+  return (
+    lower.includes("connect with figma") ||
+    lower.includes("expired") ||
+    lower.includes("reconnect")
+  );
+}
+
 function BuildShellContent() {
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("landing");
@@ -35,6 +56,8 @@ function BuildShellContent() {
   const [figmaConnected, setFigmaConnected] = useState(false);
   const [importResult, setImportResult] = useState<FigmaImportResponse | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [rateLimitUpgradeUrl, setRateLimitUpgradeUrl] = useState<string | null>(null);
+  const [isAuthError, setIsAuthError] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   const markFigmaConnected = (connected: boolean) => {
@@ -119,10 +142,23 @@ function BuildShellContent() {
     window.location.href = `${API_URL}/api/figma/oauth/start`;
   };
 
+  const handleReconnectClick = async () => {
+    // Clear old tokens and start fresh OAuth
+    await disconnectFigma();
+    markFigmaConnected(false);
+    setIsAuthError(false);
+    if (figmaUrl.trim()) {
+      localStorage.setItem("bp_figma_url", figmaUrl.trim());
+    }
+    window.location.href = `${API_URL}/api/figma/oauth/start`;
+  };
+
   const handleImportClick = async () => {
     if (!figmaUrl.trim() || !figmaConnected) return;
     setViewMode("importing");
     setImportError(null);
+    setRateLimitUpgradeUrl(null);
+    setIsAuthError(false);
     try {
       const res = await importFigmaFrame(figmaUrl.trim());
       setImportResult(res);
@@ -143,18 +179,35 @@ function BuildShellContent() {
           genErr instanceof Error
             ? genErr.message
             : "We're having trouble generating your prototype. Please try again.";
-        if (msg.includes("Connect with Figma")) {
+        const isAuth = isAuthRelatedError(msg);
+        if (isAuth) {
           markFigmaConnected(false);
+          setIsAuthError(true);
         }
         setImportError(msg);
         setViewMode("error");
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Something went wrong. Please try again.";
-      if (msg.includes("Connect with Figma")) {
-        markFigmaConnected(false);
+      if (e instanceof FigmaRateLimitError) {
+        let msg = e.message;
+        if (e.retryAfterSeconds != null && e.retryAfterSeconds > 0) {
+          const mins = Math.ceil(e.retryAfterSeconds / 60);
+          const hrs = Math.ceil(e.retryAfterSeconds / 3600);
+          msg += mins < 60 ? ` Try again in about ${mins} minutes.` : ` Try again in about ${hrs} hours.`;
+        } else {
+          msg += " Please try again later.";
+        }
+        setImportError(msg);
+        setRateLimitUpgradeUrl(e.upgradeUrl ?? null);
+      } else {
+        const msg = e instanceof Error ? e.message : "Something went wrong. Please try again.";
+        const isAuth = isAuthRelatedError(msg);
+        if (isAuth) {
+          markFigmaConnected(false);
+          setIsAuthError(true);
+        }
+        setImportError(msg);
       }
-      setImportError(msg);
       setViewMode("error");
     }
   };
@@ -246,40 +299,81 @@ function BuildShellContent() {
           {viewMode === "error" && (
             <div className="text-center max-w-lg mx-auto">
               <p className="text-charcoal mb-4">{importError}</p>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (importResult) {
-                    setViewMode("generating");
-                    setImportError(null);
-                    try {
-                      const codeRes = await generateCode(importResult);
-                      if (codeRes.status === "ready") {
-                        setSessionId(codeRes.session_id);
-                        setViewMode("success");
+              {rateLimitUpgradeUrl && (
+                <p className="text-charcoal mb-4 text-sm">
+                  <a
+                    href={rateLimitUpgradeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-terracotta hover:underline"
+                  >
+                    Upgrade your Figma seat for higher limits
+                  </a>
+                </p>
+              )}
+              <div className="flex flex-col items-center gap-3">
+                {isAuthError ? (
+                  <button
+                    type="button"
+                    onClick={handleReconnectClick}
+                    className="px-6 py-2.5 bg-charcoal hover:bg-primary-dark text-sand-light rounded-xl transition-all shadow-md text-sm font-semibold"
+                  >
+                    Connect with Figma
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (importResult) {
+                        setViewMode("generating");
+                        setImportError(null);
+                        setRateLimitUpgradeUrl(null);
+                        setIsAuthError(false);
+                        try {
+                          const codeRes = await generateCode(importResult);
+                          if (codeRes.status === "ready") {
+                            setSessionId(codeRes.session_id);
+                            setViewMode("success");
+                          } else {
+                            setImportError(
+                              `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
+                            );
+                            setViewMode("error");
+                          }
+                        } catch (genErr) {
+                          setImportError(
+                            genErr instanceof Error
+                              ? genErr.message
+                              : "We're having trouble generating your prototype. Please try again."
+                          );
+                          setViewMode("error");
+                        }
                       } else {
-                        setImportError(
-                          `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
-                        );
-                        setViewMode("error");
+                        setViewMode("paste");
+                        setImportError(null);
+                        setRateLimitUpgradeUrl(null);
+                        setIsAuthError(false);
                       }
-                    } catch (genErr) {
-                      setImportError(
-                        genErr instanceof Error
-                          ? genErr.message
-                          : "We're having trouble generating your prototype. Please try again."
-                      );
-                      setViewMode("error");
-                    }
-                  } else {
-                    setViewMode("paste");
-                    setImportError(null);
-                  }
-                }}
-                className="text-terracotta hover:underline text-sm"
-              >
-                Try again
-              </button>
+                    }}
+                    className="text-terracotta hover:underline text-sm"
+                  >
+                    Try again
+                  </button>
+                )}
+                {isAuthError && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode("paste");
+                      setImportError(null);
+                      setIsAuthError(false);
+                    }}
+                    className="text-charcoal-light hover:text-charcoal text-sm"
+                  >
+                    Go back
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {importError && viewMode !== "error" && (

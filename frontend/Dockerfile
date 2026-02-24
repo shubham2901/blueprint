@@ -12,8 +12,8 @@ COPY . .
 # Build
 RUN npm run build
 
-# Expose port
+# Expose port (Railway sets PORT dynamically)
 EXPOSE 3000
 
-# Run
+# Run - Next.js respects PORT env var automatically
 CMD ["npm", "start"]

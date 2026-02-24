@@ -35,7 +35,7 @@ _initialized: bool = False
 # Providers in this dict are skipped until RATE_LIMIT_COOLDOWN_SECONDS elapse.
 _rate_limited_until: dict[str, float] = {}
 RATE_LIMIT_COOLDOWN_SECONDS = 600  # Skip rate-limited provider for 10 minutes (daily quota)
-LLM_CALL_TIMEOUT_SECONDS = 30     # Per-provider timeout — prevents indefinite hangs
+LLM_CALL_TIMEOUT_SECONDS = 90     # Per-provider timeout — increased for vision/large requests
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
@@ -329,6 +329,14 @@ async def call_llm_structured(
             )
 
 
+# Vision-capable models fallback chain (design-to-code)
+VISION_FALLBACK_CHAIN = [
+    "gemini/gemini-2.5-pro",      # Primary — best quality
+    "gemini/gemini-3-pro",        # Fallback 1 — Gemini 3
+    "openai/gpt-4o",              # Fallback 2 — OpenAI vision
+]
+
+
 async def call_llm_vision(
     messages: list[dict],
     image_base64: str | None,
@@ -339,8 +347,8 @@ async def call_llm_vision(
 
     Accepts base64-encoded image (caller fetches thumbnail and encodes).
     Prepends image to the first user message as multimodal content.
-    Uses CODE_GEN_MODEL only — no fallback chain. No response_format
-    (Gemini JSON mode conflicts with vision; code output is plain text).
+    Uses VISION_FALLBACK_CHAIN with automatic fallback on failure.
+    No response_format (Gemini JSON mode conflicts with vision; code output is plain text).
 
     Args:
         messages: Chat messages (system + user; no injection here).
@@ -351,7 +359,7 @@ async def call_llm_vision(
         Raw response content string from the LLM.
 
     Raises:
-        LLMError: If the vision call fails.
+        LLMError: If all vision providers fail.
     """
     # Build messages with optional image prepended to first user message
     final_messages = [dict(m) for m in messages]
@@ -373,69 +381,105 @@ async def call_llm_vision(
                 final_messages[i] = {**msg, "content": content}
                 break
 
-    log(
-        "INFO",
-        "llm vision call started",
-        session_id=session_id,
-        provider=CODE_GEN_MODEL,
-        prompt_type="design_to_code",
-        has_image=bool(image_base64),
-    )
-    start = time.perf_counter()
+    last_error: Exception | None = None
 
-    try:
-        response = await litellm.acompletion(
-            model=CODE_GEN_MODEL,
-            messages=final_messages,
-            temperature=0.3,
-            max_tokens=8000,
-            timeout=LLM_CALL_TIMEOUT_SECONDS,
-        )
-        duration_ms = int((time.perf_counter() - start) * 1000)
-
-        content = ""
-        if response.choices:
-            msg = response.choices[0].message
-            if msg.content:
-                content = msg.content
-            elif hasattr(msg, "reasoning_content") and msg.reasoning_content:
-                content = msg.reasoning_content
-
-        if not content:
+    for idx, provider in enumerate(VISION_FALLBACK_CHAIN):
+        # Skip providers in cooldown
+        if _is_in_cooldown(provider):
             log(
-                "WARN",
-                "llm vision returned empty content",
+                "INFO",
+                "skipping rate-limited vision provider",
                 session_id=session_id,
-                provider=CODE_GEN_MODEL,
+                provider=provider,
             )
-            return ""
-
-        tokens_used = None
-        if hasattr(response, "usage") and response.usage:
-            tokens_used = getattr(response.usage, "total_tokens", None)
+            continue
 
         log(
             "INFO",
-            "llm vision call succeeded",
+            "llm vision call started",
             session_id=session_id,
-            provider=CODE_GEN_MODEL,
-            duration_ms=duration_ms,
-            tokens_used=tokens_used,
-            output_length=len(content),
+            provider=provider,
+            prompt_type="design_to_code",
+            has_image=bool(image_base64),
         )
-        return content
+        start = time.perf_counter()
 
-    except Exception as e:
-        code = generate_error_code()
-        log(
-            "ERROR",
-            "llm vision call failed",
-            session_id=session_id,
-            provider=CODE_GEN_MODEL,
-            error=str(e),
-            error_code=code,
-        )
-        raise LLMError(f"Vision LLM failed: {e}") from e
+        try:
+            response = await litellm.acompletion(
+                model=provider,
+                messages=final_messages,
+                temperature=0.3,
+                max_tokens=8000,
+                timeout=LLM_CALL_TIMEOUT_SECONDS,
+            )
+            duration_ms = int((time.perf_counter() - start) * 1000)
+
+            content = ""
+            if response.choices:
+                msg = response.choices[0].message
+                if msg.content:
+                    content = msg.content
+                elif hasattr(msg, "reasoning_content") and msg.reasoning_content:
+                    content = msg.reasoning_content
+
+            if not content:
+                log(
+                    "WARN",
+                    "llm vision returned empty content, trying next provider",
+                    session_id=session_id,
+                    provider=provider,
+                )
+                raise ValueError(f"Provider {provider} returned empty content")
+
+            tokens_used = None
+            if hasattr(response, "usage") and response.usage:
+                tokens_used = getattr(response.usage, "total_tokens", None)
+
+            log(
+                "INFO",
+                "llm vision call succeeded",
+                session_id=session_id,
+                provider=provider,
+                duration_ms=duration_ms,
+                tokens_used=tokens_used,
+                output_length=len(content),
+            )
+            return content
+
+        except Exception as e:
+            code = generate_error_code()
+            log(
+                "ERROR",
+                "llm vision call failed",
+                session_id=session_id,
+                provider=provider,
+                error=str(e),
+                error_code=code,
+            )
+            last_error = e
+
+            # Mark as rate-limited if applicable
+            if _is_rate_limit_error(e):
+                _mark_rate_limited(provider)
+
+            # Log fallback attempt
+            next_provider = None
+            for nxt in VISION_FALLBACK_CHAIN[idx + 1:]:
+                if not _is_in_cooldown(nxt):
+                    next_provider = nxt
+                    break
+            if next_provider:
+                log(
+                    "WARN",
+                    "llm vision provider fallback",
+                    session_id=session_id,
+                    from_provider=provider,
+                    to_provider=next_provider,
+                    reason=str(e),
+                )
+            continue
+
+    raise LLMError(f"All vision providers failed. Last error: {last_error}") from last_error
 
 
 # ─────────────────────────────────────────────────────────────────────────────

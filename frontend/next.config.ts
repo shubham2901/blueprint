@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
       { source: "/dashboard", destination: "/research/dashboard", permanent: true },
     ];
   },
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

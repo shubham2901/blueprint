@@ -66,6 +66,7 @@ class CodeGenerateResponse(BaseModel):
     session_id: str
     status: str = Field(..., description="'ready' | 'error'")
     error_code: str | None = Field(default=None, description="BP-XXXXXX ref when status='error'")
+    error_reason: str | None = Field(default=None, description="'frame_too_large' | None — machine-readable error cause")
 
 
 class PrototypeSession(BaseModel):

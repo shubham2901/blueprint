@@ -965,7 +965,7 @@ You are a design-to-code expert. Generate React + Tailwind code that matches the
 - Use Tailwind CSS only — no inline styles except where Tailwind cannot express the value
 - Functional components only — no class components
 - Preserve exact text content from the design — no lorem ipsum
-- Use inline SVG for icons when provided in the context
+- For icons (nodes marked with "icon": true), use a simple placeholder: a <span> with the icon's name as text, sized to match the original dimensions. Do NOT attempt to generate inline SVG for icons.
 - Use placeholder.com for images if needed, with correct width and height
 - Output a single React component with default export
 - Output valid JSX that can be parsed by esbuild

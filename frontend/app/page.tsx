@@ -17,7 +17,7 @@ import {
   type FigmaImportResponse,
 } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Build Shell — Phase 1
@@ -36,16 +36,21 @@ type ViewMode = "landing" | "paste" | "importing" | "generating" | "success" | "
  */
 function isAuthRelatedError(msg: string): boolean {
   const lower = msg.toLowerCase();
-  // Exclude permission errors first
   if (lower.includes("private") || lower.includes("permission")) {
     return false;
   }
-  // Check for auth-related keywords
   return (
     lower.includes("connect with figma") ||
     lower.includes("expired") ||
     lower.includes("reconnect")
   );
+}
+
+function codeGenErrorMessage(codeRes: { error_code?: string; error_reason?: string | null }): string {
+  if (codeRes.error_reason === "frame_too_large") {
+    return "This frame is too large to generate code from. Please select a smaller frame or a single section of your design.";
+  }
+  return `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`;
 }
 
 function BuildShellContent() {
@@ -168,9 +173,7 @@ function BuildShellContent() {
           setSessionId(codeRes.session_id);
           setViewMode("success");
         } else {
-          setImportError(
-            `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
-          );
+          setImportError(codeGenErrorMessage(codeRes));
           setViewMode("error");
         }
       } catch (genErr) {
@@ -267,9 +270,7 @@ function BuildShellContent() {
                     setSessionId(codeRes.session_id);
                     setViewMode("success");
                   } else {
-                    setImportError(
-                      `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
-                    );
+                    setImportError(codeGenErrorMessage(codeRes));
                     setViewMode("error");
                   }
                 } catch (genErr) {
@@ -322,9 +323,7 @@ function BuildShellContent() {
                             setSessionId(codeRes.session_id);
                             setViewMode("success");
                           } else {
-                            setImportError(
-                              `We're having trouble generating your prototype. Please try again. (Ref: ${codeRes.error_code || "BP-XXXXXX"})`
-                            );
+                            setImportError(codeGenErrorMessage(codeRes));
                             setViewMode("error");
                           }
                         } catch (genErr) {

@@ -265,6 +265,7 @@ export interface CodeGenerateResponse {
   session_id: string;
   status: "ready" | "error";
   error_code?: string;
+  error_reason?: "frame_too_large" | null;
 }
 
 export interface PrototypeSession {

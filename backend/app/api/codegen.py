@@ -26,7 +26,6 @@ from app.prompts import build_design_to_code_prompt
 
 router = APIRouter(prefix="/api/code", tags=["code"])
 SESSION_COOKIE = "bp_session"
-FIGMA_API_BASE = "https://api.figma.com/v1"
 
 
 def _is_secure() -> bool:
@@ -66,67 +65,15 @@ def _validate_jsx(code: str) -> tuple[bool, str | None]:
         return False, str(e)
 
 
-def _collect_icon_node_ids(tree: list[dict]) -> list[str]:
-    """Recursively collect node IDs where type is VECTOR or BOOLEAN_OPERATION."""
-    ids: list[str] = []
-
-    def walk(nodes: list[dict]) -> None:
-        for node in nodes:
-            if isinstance(node, dict) and node.get("type") in ("VECTOR", "BOOLEAN_OPERATION"):
-                nid = node.get("id")
-                if nid:
-                    ids.append(nid)
-            children = node.get("children", []) if isinstance(node, dict) else []
-            if children:
-                walk(children)
-
-    walk(tree)
-    return ids
-
-
-async def _fetch_icon_svgs(
-    file_key: str,
-    node_ids: list[str],
-    access_token: str,
-    session_id: str,
-) -> dict[str, str]:
-    """
-    Fetch SVG content for icon nodes from Figma API.
-    Returns dict mapping node_id -> svg_content.
-    """
-    if not file_key or not node_ids:
-        return {}
-    ids_param = ",".join(node_ids)
-    url = f"{FIGMA_API_BASE}/images/{file_key}"
-    params = {"ids": ids_param, "format": "svg"}
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                url,
-                params=params,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-        if resp.status_code != 200:
-            log("WARN", "icon svg export failed", session_id=session_id, error=f"HTTP {resp.status_code}")
-            return {}
-        data = resp.json()
-        images = data.get("images", {}) or {}
-        result: dict[str, str] = {}
-        for nid, svg_url in images.items():
-            if not svg_url:
-                continue
-            try:
-                async with httpx.AsyncClient() as client:
-                    r = await client.get(svg_url)
-                if r.status_code == 200 and r.text:
-                    result[nid] = r.text
-            except Exception as e:
-                log("WARN", "icon svg fetch failed", session_id=session_id, node_id=nid, error=str(e))
-        log("INFO", "icon svg export completed", session_id=session_id, icon_count=len(node_ids), fetched=len(result))
-        return result
-    except Exception as e:
-        log("WARN", "icon svg export failed", session_id=session_id, error=str(e))
-        return {}
+def _count_icons(tree: list[dict]) -> int:
+    """Count VECTOR/BOOLEAN_OPERATION nodes (icons) in the tree."""
+    count = 0
+    for node in tree:
+        if isinstance(node, dict):
+            if node.get("type") in ("VECTOR", "BOOLEAN_OPERATION"):
+                count += 1
+            count += _count_icons(node.get("children", []))
+    return count
 
 
 @router.post("/generate", response_model=CodeGenerateResponse)
@@ -186,7 +133,7 @@ async def code_generate(
     # 2. Transform design context
     transformed = transform_design_context(body.design_context)
     tree = transformed.get("tree", [])
-    icon_count = sum(1 for n in _flatten_tree(tree) if n.get("type") in ("VECTOR", "BOOLEAN_OPERATION"))
+    icon_count = _count_icons(tree)
     log("INFO", "design context transformed", session_id=session_id[:8], tree_nodes=len(tree), icon_count=icon_count)
 
     # 3. Fetch thumbnail → base64
@@ -203,14 +150,8 @@ async def code_generate(
         except Exception as e:
             log("WARN", "thumbnail fetch failed", session_id=session_id[:8], error=str(e))
 
-    # 4. Fetch icon SVGs (Task 4)
-    access_token = tokens.get("access_token", "")
-    icon_ids = _collect_icon_node_ids(tree)
-    icons: dict[str, str] = {}
-    if body.file_key and icon_ids and access_token:
-        icons = await _fetch_icon_svgs(body.file_key, icon_ids, access_token, session_id)
-    if icons:
-        transformed["icons"] = icons
+    # 4. Icon handling — skip SVG fetching, use placeholders (saves ~100K+ tokens)
+    log("INFO", "using placeholder icons", session_id=session_id[:8], icon_count=icon_count)
 
     # 5. Build prompt, call vision LLM
     prompt_text = build_design_to_code_prompt(transformed)
@@ -220,9 +161,10 @@ async def code_generate(
         raw_code = await call_llm_vision(messages, image_base64, session_id=session_id)
     except LLMError as e:
         code = generate_error_code()
-        log("ERROR", "code generation failed", session_id=session_id[:8], error_code=code, error=str(e))
+        reason = "frame_too_large" if e.context_window_exceeded else None
+        log("ERROR", "code generation failed", session_id=session_id[:8], error_code=code, error=str(e), error_reason=reason)
         await update_prototype_session(session_id=session_id, status="error", error_code=code)
-        return CodeGenerateResponse(session_id=session_id, status="error", error_code=code)
+        return CodeGenerateResponse(session_id=session_id, status="error", error_code=code, error_reason=reason)
 
     code_str = strip_code_fences(raw_code)
 
@@ -268,20 +210,6 @@ async def code_generate(
     log("INFO", "code generation completed", session_id=session_id[:8], duration_ms=duration_ms, code_length=len(code_str))
 
     return CodeGenerateResponse(session_id=session_id, status="ready")
-
-
-def _flatten_tree(tree: list[dict]) -> list[dict]:
-    """Flatten tree for iteration."""
-    out: list[dict] = []
-
-    def walk(nodes: list[dict]) -> None:
-        for node in nodes:
-            if isinstance(node, dict):
-                out.append(node)
-                walk(node.get("children", []))
-
-    walk(tree)
-    return out
 
 
 @router.get("/session")

@@ -47,6 +47,15 @@ def _is_rate_limit_error(error: Exception) -> bool:
     ))
 
 
+def _is_context_window_error(error: Exception) -> bool:
+    """Check if an error is a context window / input too large error."""
+    error_str = str(error).lower()
+    return any(kw in error_str for kw in (
+        "contextwindowexceeded", "context_window", "request too large",
+        "too many tokens", "token limit", "maximum context length",
+    ))
+
+
 def _mark_rate_limited(provider: str) -> None:
     """Record that a provider just hit a rate limit."""
     _rate_limited_until[provider] = time.monotonic() + RATE_LIMIT_COOLDOWN_SECONDS
@@ -74,7 +83,9 @@ def _is_in_cooldown(provider: str) -> bool:
 class LLMError(Exception):
     """All providers in the fallback chain failed."""
 
-    pass
+    def __init__(self, message: str, context_window_exceeded: bool = False):
+        self.context_window_exceeded = context_window_exceeded
+        super().__init__(message)
 
 
 class LLMValidationError(Exception):
@@ -331,9 +342,10 @@ async def call_llm_structured(
 
 # Vision-capable models fallback chain (design-to-code)
 VISION_FALLBACK_CHAIN = [
-    "gemini/gemini-2.5-pro",      # Primary — best quality
-    "gemini/gemini-3-pro",        # Fallback 1 — Gemini 3
-    "openai/gpt-4o",              # Fallback 2 — OpenAI vision
+    "gemini/gemini-3-flash-preview",   # Primary — fast, 1M context, vision
+    "gemini/gemini-2.5-pro",           # Fallback 1 — high quality
+    "gemini/gemini-3-pro-preview",     # Fallback 2 — Gemini 3 Pro
+    "openai/gpt-4o",                   # Fallback 3 — OpenAI vision
 ]
 
 
@@ -382,6 +394,7 @@ async def call_llm_vision(
                 break
 
     last_error: Exception | None = None
+    any_context_window_error = False
 
     for idx, provider in enumerate(VISION_FALLBACK_CHAIN):
         # Skip providers in cooldown
@@ -458,6 +471,9 @@ async def call_llm_vision(
             )
             last_error = e
 
+            if _is_context_window_error(e):
+                any_context_window_error = True
+
             # Mark as rate-limited if applicable
             if _is_rate_limit_error(e):
                 _mark_rate_limited(provider)
@@ -479,7 +495,10 @@ async def call_llm_vision(
                 )
             continue
 
-    raise LLMError(f"All vision providers failed. Last error: {last_error}") from last_error
+    raise LLMError(
+        f"All vision providers failed. Last error: {last_error}",
+        context_window_exceeded=any_context_window_error,
+    ) from last_error
 
 
 # ─────────────────────────────────────────────────────────────────────────────

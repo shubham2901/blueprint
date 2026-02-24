@@ -107,6 +107,11 @@ def _is_secure() -> bool:
     return settings.environment == "production"
 
 
+def _cookie_samesite() -> str:
+    """Return 'none' for production (cross-origin), 'lax' for local dev (same-origin)."""
+    return "none" if settings.environment == "production" else "lax"
+
+
 @router.get("/oauth/start")
 async def oauth_start(response: Response) -> RedirectResponse:
     """
@@ -138,7 +143,7 @@ async def oauth_start(response: Response) -> RedirectResponse:
         max_age=STATE_MAX_AGE,
         httponly=True,
         secure=_is_secure(),
-        samesite="lax",
+        samesite=_cookie_samesite(),
         path="/",
     )
     log("INFO", "figma oauth start", redirect_to="figma")
@@ -252,7 +257,7 @@ async def oauth_callback(
             max_age=SESSION_MAX_AGE,
             httponly=True,
             secure=_is_secure(),
-            samesite="lax",
+            samesite=_cookie_samesite(),
             path="/",
         )
     return resp

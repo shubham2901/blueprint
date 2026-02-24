@@ -12,7 +12,7 @@ import uuid
 import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 
-from app.config import generate_error_code, log
+from app.config import generate_error_code, log, settings
 from app.db import (
     create_prototype_session,
     get_figma_tokens,
@@ -27,6 +27,15 @@ from app.prompts import build_design_to_code_prompt
 router = APIRouter(prefix="/api/code", tags=["code"])
 SESSION_COOKIE = "bp_session"
 FIGMA_API_BASE = "https://api.figma.com/v1"
+
+
+def _is_secure() -> bool:
+    return settings.environment == "production"
+
+
+def _cookie_samesite() -> str:
+    """Return 'none' for production (cross-origin), 'lax' for local dev (same-origin)."""
+    return "none" if settings.environment == "production" else "lax"
 
 
 def _get_session_and_tokens(request: Request, bp_session: str | None) -> tuple[str, dict | None]:
@@ -149,7 +158,8 @@ async def code_generate(
             value=session_id,
             max_age=60 * 60 * 24 * 30,
             httponly=True,
-            samesite="lax",
+            secure=_is_secure(),
+            samesite=_cookie_samesite(),
             path="/",
         )
 

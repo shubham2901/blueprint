@@ -2,7 +2,8 @@
 Blueprint Backend — Web Search
 
 Tavily (primary) → Serper (fallback) → DuckDuckGo (last-resort).
-Uses httpx for Tavily and Serper; duckduckgo-search for DDG.
+Uses httpx for Tavily and Serper; duckduckgo-search for DDG.\
+
 """
 
 import asyncio

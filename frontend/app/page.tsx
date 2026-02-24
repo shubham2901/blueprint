@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BuildLanding } from "@/app/components/BuildLanding";
 import { PasteUrlView } from "@/app/components/PasteUrlView";
@@ -218,18 +217,6 @@ function BuildShellContent() {
       <main className="flex-1 flex flex-col bg-white rounded-3xl border border-stone shadow-sm overflow-hidden min-w-0">
         <header className="h-16 flex items-end px-12 border-b border-stone shrink-0">
           <div className="flex space-x-8 h-full w-full items-end">
-            <Link
-              href="/research"
-              className="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1"
-            >
-              Research
-            </Link>
-            <Link
-              href="/research"
-              className="relative pb-4 flex items-center text-sm font-medium text-charcoal-light hover:text-charcoal transition-colors px-1"
-            >
-              Blueprint
-            </Link>
             <button
               type="button"
               className="relative pb-4 flex items-center text-base font-serif font-bold text-charcoal px-1 cursor-default"

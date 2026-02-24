@@ -9,12 +9,12 @@ RUN npm ci
 # Copy application code
 COPY . .
 
-# Build-time env vars (NEXT_PUBLIC_* must be present at build time)
+# Build-time env vars — Next.js bakes these during `npm run build`
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-# Note: BACKEND_INTERNAL_URL is set at runtime in Railway for internal networking
-# It's used by Next.js rewrites to proxy /api/* to the backend
+ARG BACKEND_INTERNAL_URL
+ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
 # Build
 RUN npm run build

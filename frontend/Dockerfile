@@ -15,5 +15,5 @@ RUN npm run build
 # Expose port (Railway sets PORT dynamically)
 EXPOSE 3000
 
-# Run - Next.js respects PORT env var automatically
-CMD ["npm", "start"]
+# Run - use shell form to expand PORT env var
+CMD npm start -- -p ${PORT:-3000}

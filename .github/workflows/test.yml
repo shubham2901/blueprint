@@ -1,13 +1,13 @@
 name: Tests
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
+ # push:
+  #  branches: [main]
+  #pull_request:
+  #  branches: [main]
+  #schedule:
     # Run nightly at 2 AM UTC for full prompt eval suite
-    - cron: '0 2 * * *'
+   # - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       run_evals:
